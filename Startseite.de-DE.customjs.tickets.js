@@ -100,7 +100,7 @@ const selectedTicketIds = new Set();
 function updateDeleteButtonState() {
   const deleteBtn = document.getElementById("ticketsDeleteBtn");
   if (!deleteBtn) return;
-  deleteBtn.textContent = deleteModeActive ? "BestÃ¤tigen" : "LÃ¶schen";
+  deleteBtn.textContent = deleteModeActive ? "Best\u00e4tigen" : "L\u00f6schen";
   deleteBtn.classList.toggle("is-confirm", deleteModeActive);
 }
 
@@ -284,7 +284,7 @@ function renderTickets() {
     actions.className = "ticket-actions";
     const fav = document.createElement("span");
     fav.className = `ticket-fav${ticket.isFav ? " is-fav" : ""}`;
-    fav.textContent = ticket.isFav ? "â˜…" : "â˜†";
+    fav.textContent = ticket.isFav ? "\u2605" : "\u2606";
     fav.title = ticket.isFav ? "Favorit entfernen" : "Als Favorit markieren";
     fav.addEventListener("click", () => {
       const all = loadTickets();
@@ -667,6 +667,7 @@ async function openTicketsViewWithFreshSync() {
       includeStorage: true,
       renderOnLocalChange: true
     });
+    renderTickets();
     await stopOverlay(isSuccess);
   })();
 
