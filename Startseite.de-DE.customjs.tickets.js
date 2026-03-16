@@ -567,6 +567,19 @@ function markTicketUndone(ticketEl) {
 
 }
 
+function isDoneStatus(statusRaw) {
+  const status = (statusRaw || "").trim().toLowerCase();
+  if (!status) return false;
+  return [
+    "fertig",
+    "erledigt",
+    "done",
+    "completed",
+    "geschlossen",
+    "closed"
+  ].includes(status);
+}
+
 function applyStatusesToDom(tickets, options = {}) {
   const renderOnLocalChange = options.renderOnLocalChange !== false;
   if (!Array.isArray(tickets) || !tickets.length) return;
@@ -588,7 +601,7 @@ function applyStatusesToDom(tickets, options = {}) {
     const status = (statusMap.get(lookupId) || "").trim().toLowerCase();
     if (!status) return;
 
-    const shouldBeDone = status === "fertig";
+    const shouldBeDone = isDoneStatus(status);
     if (ticket.done !== shouldBeDone) {
       ticket.done = shouldBeDone;
       hasLocalChanges = true;
@@ -612,7 +625,7 @@ function applyStatusesToDom(tickets, options = {}) {
     if (!ticketId) return;
     const status = (statusMap.get(ticketId) || "").trim().toLowerCase();
     if (!status) return;
-    if (status === "fertig") {
+    if (isDoneStatus(status)) {
       markTicketDone(ticketEl);
     } else {
       markTicketUndone(ticketEl);
