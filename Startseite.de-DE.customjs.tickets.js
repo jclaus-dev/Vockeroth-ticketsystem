@@ -567,8 +567,37 @@ function markTicketUndone(ticketEl) {
 
 }
 
+function extractStatusText(statusRaw) {
+  if (statusRaw == null) return "";
+
+  if (typeof statusRaw === "string") {
+    const text = statusRaw.trim();
+    if (!text) return "";
+
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object") {
+        return extractStatusText(parsed.Value ?? parsed.value ?? parsed.status ?? parsed.Status) || text;
+      }
+    } catch {
+      // keep original text when status is plain string
+    }
+    return text;
+  }
+
+  if (typeof statusRaw === "object") {
+    return extractStatusText(statusRaw.Value ?? statusRaw.value ?? statusRaw.status ?? statusRaw.Status);
+  }
+
+  return String(statusRaw).trim();
+}
+
+function normalizeStatus(statusRaw) {
+  return extractStatusText(statusRaw).trim().toLowerCase();
+}
+
 function isDoneStatus(statusRaw) {
-  const status = (statusRaw || "").trim().toLowerCase();
+  const status = normalizeStatus(statusRaw);
   if (!status) return false;
   return [
     "fertig",
@@ -587,7 +616,7 @@ function applyStatusesToDom(tickets, options = {}) {
   const statusMap = new Map();
   tickets.forEach(item => {
     const id = (item?.ticketId || item?.TicketID || item?.ticketID || item?.id || "").trim();
-    const status = (item?.status || item?.Status || "").trim();
+    const status = normalizeStatus(item?.status ?? item?.Status);
     if (id) statusMap.set(id, status);
   });
   if (!statusMap.size) return;
@@ -598,7 +627,7 @@ function applyStatusesToDom(tickets, options = {}) {
   allTickets.forEach(ticket => {
     const lookupId = (ticket.ticketId || ticket.id || "").trim();
     if (!lookupId) return;
-    const status = (statusMap.get(lookupId) || "").trim().toLowerCase();
+    const status = statusMap.get(lookupId) || "";
     if (!status) return;
 
     const shouldBeDone = isDoneStatus(status);
@@ -623,7 +652,7 @@ function applyStatusesToDom(tickets, options = {}) {
   document.querySelectorAll(TICKET_STATUS_SELECTORS.ticket).forEach(ticketEl => {
     const ticketId = (ticketEl.dataset.ticketId || "").trim();
     if (!ticketId) return;
-    const status = (statusMap.get(ticketId) || "").trim().toLowerCase();
+    const status = statusMap.get(ticketId) || "";
     if (!status) return;
     if (isDoneStatus(status)) {
       markTicketDone(ticketEl);
