@@ -34,10 +34,11 @@ function initializeApp() {
 
   disableAllTiles();
 
-  const savedPers = localStorage.getItem(SESSION_KEYS.persNr);
-  const savedFil  = localStorage.getItem(SESSION_KEYS.filNr);
-  if (savedPers) inputs.persNr.value = savedPers;
-  if (savedFil)  inputs.filNr.value  = savedFil;
+  [SESSION_KEYS.persNr, SESSION_KEYS.filNr, SESSION_KEYS.expiresAt].forEach(key => {
+    localStorage.removeItem(key);
+  });
+  inputs.persNr.value = "";
+  inputs.filNr.value = "";
   updateFilialPlaceholder();
   validatePersonalFilial();
   if (typeof loadTickets === "function" && typeof updateTicketsTabLabel === "function") {
@@ -234,6 +235,8 @@ function enforceDailyReload() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  initKeyboardShortcutsHint();
+  initializeNewsletterQuickSelect();
   setupBlinkingPlaceholder(inputs.gutschein);
   setupBlinkingPlaceholder(inputs.gutscheinWert);
   setupBlinkingPlaceholder(inputs.best1);

@@ -32,7 +32,7 @@ const FILIAL_MAP = {
   "40": "Bad Hersfeld",
   "43": "Bad Hersfeld Sauer Zebra 21",
   "46": "Homberg Sauer",
-  "46": "Schwalmstad Sauer Wäsche",
+  "49": "Schwalmstadt Sauer Wäsche",
   "50": "Melsungen Intersport",
   "51": "Bad Hersfeld Intersport",
   "52": "Bad Hersfeld Bike Werkstatt",
@@ -61,6 +61,60 @@ let twoEans = false;
 let passReason = "";
 let inputMode = "keyboard";
 let pendingCreateRequests = 0;
+const NEWSLETTER_PDFS = [
+  { order: 1, title: "Bestellungen melden Übersicht", file: "1. Bestellungen_melden_Übersicht.pdf" },
+  { order: 2, title: "EAN vergleichen", file: "2. EAN_vergleichen.pdf" },
+  { order: 3, title: "GLS Retoure finden", file: "3. GLS Retoure finden.pdf" },
+  { order: null, title: "Grundlagen zu M-Board und Zalando", file: "Grundlagen zu M‑Board und Zalando.pdf" },
+  { order: null, title: "Neuer Ablauf Stationärer Umtausch", file: "Neuer_Ablauf_Stationärer_Umtausch.pdf" },
+  { order: null, title: "Neuer Ablauf Zalando und MBoard", file: "Neuer_Ablauf_Zalando_und_MBoard.pdf" },
+  { order: null, title: "Retourenbeleg", file: "Retourenbeleg.pdf" },
+  { order: null, title: "Vorstellung Team Onlineshop", file: "Vorstellung_Team_Onlineshop.pdf" }
+];
+
+const NEWSLETTER_MANIFEST = [
+  "1. EAN_vergleichen.pdf",
+  "2. Artikelversand-Kontrolle.pdf",
+  "3. Verpacken_Versandtüten_Kartons.pdf",
+  "4. Pakete_Verpackungen_Inhalt_prüfen.pdf",
+  "5. Neuer_Ablauf_Stationärer_Umtausch.pdf",
+  "5.1 Retourenbeleg.pdf",
+  "6. Einzelteile suchen.pdf",
+  "7. Neuer_Ablauf_Zalando_und_MBoard.pdf",
+  "8. Zalando_Retouren_bearbeiten.pdf",
+  "9. Wie_verpacke_ich_richtig_.pdf",
+  "10. Schwarz-Weiß_drucken _Abschließen.pdf",
+  "11. Newsletter_Zalando_Leistungsbewertung.pdf",
+  "12. Gutscheine.pdf",
+  "13. Abarbeitung der Online-Shop Bestellungen.pdf",
+  "14. Bestellungen_melden_Übersicht.pdf",
+  "15. Neuigkeiten im M-Board.pdf",
+  "16. Vorstellung_Team_Onlineshop.pdf",
+  "17. Grundlagen zu M‑Board und Zalando.pdf",
+  "18. GLS Retoure finden.pdf"
+];
+
+const NEWSLETTER_MANIFEST_FALLBACK = [
+  "1. EAN_vergleichen.pdf",
+  "2. Artikelversand-Kontrolle.pdf",
+  "3. Verpacken_Versandt\u00fcten_Kartons.pdf",
+  "4. Pakete_Verpackungen_Inhalt_pr\u00fcfen.pdf",
+  "5. Neuer_Ablauf_Station\u00e4rer_Umtausch.pdf",
+  "5.1 Retourenbeleg.pdf",
+  "6. Einzelteile suchen.pdf",
+  "7. Neuer_Ablauf_Zalando_und_MBoard.pdf",
+  "8. Zalando_Retouren_bearbeiten.pdf",
+  "9. Wie_verpacke_ich_richtig_.pdf",
+  "10. Schwarz-Wei\u00df_drucken _Abschlie\u00dfen.pdf",
+  "11. Newsletter_Zalando_Leistungsbewertung.pdf",
+  "12. Gutscheine.pdf",
+  "13. Abarbeitung der Online-Shop Bestellungen.pdf",
+  "14. Bestellungen_melden_\u00dcbersicht.pdf",
+  "15. Neuigkeiten im M-Board.pdf",
+  "16. Vorstellung_Team_Onlineshop.pdf",
+  "17. Grundlagen zu M\u2011Board und Zalando.pdf",
+  "18. GLS Retoure finden.pdf"
+];
 
 const tiles = Array.from(document.querySelectorAll("#tileContainer .tile.clickable"));
 const popup = document.getElementById("customPopup");
@@ -309,8 +363,13 @@ async function createTicket(payload = {}) {
   };
 }
 
-function showToast(message) {
+function showToast(message, type = "success") {
   if (!message) return;
+  const text = String(message || "").trim();
+  const normalizedType = type === "error"
+    ? "error"
+    : (/pflicht|bitte.+ausf/i.test(text) ? "error" : "success");
+  const isRequiredToast = /pflichtfeld/i.test(text);
   let holder = document.getElementById("toastHolder");
   if (!holder) {
     holder = document.createElement("div");
@@ -318,14 +377,60 @@ function showToast(message) {
     document.body.appendChild(holder);
   }
   const toast = document.createElement("div");
-  toast.className = "toast-notice";
-  toast.textContent = message;
+  toast.className = `toast-notice ${normalizedType === "error" ? "is-error" : "is-success"}${isRequiredToast ? " is-required" : ""}`;
+  toast.textContent = text;
   holder.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add("is-visible"));
   setTimeout(() => {
     toast.classList.remove("is-visible");
     setTimeout(() => toast.remove(), 250);
   }, 4000);
+}
+
+function getInvalidHighlightTarget(field) {
+  if (!field) return null;
+  if (field.classList?.contains("code-box") || field.classList?.contains("bestellung-box")) return field;
+  if (typeof field.closest === "function") {
+    const wrap = field.closest(".code-box, .bestellung-box, .gutschein-box, .passwort-box");
+    if (wrap) return wrap;
+  }
+  return field.parentElement || field;
+}
+
+function clearInvalidFieldState(field) {
+  if (!field) return;
+  const target = getInvalidHighlightTarget(field);
+  target?.classList?.remove("field-invalid");
+  if (field.classList) field.classList.remove("field-input-invalid");
+}
+
+function maybeClearInvalidFieldState(field) {
+  if (!field) return;
+  const value = typeof field.value === "string" ? field.value.trim() : "";
+  if (!value) return;
+  clearInvalidFieldState(field);
+}
+
+function markInvalidField(field, focus = false) {
+  if (!field) return;
+  const target = getInvalidHighlightTarget(field);
+  if (target?.classList) {
+    target.classList.remove("field-invalid");
+    void target.offsetWidth;
+    target.classList.add("field-invalid");
+  }
+  if (field.classList) field.classList.add("field-input-invalid");
+  if (!field.dataset.invalidBound) {
+    field.dataset.invalidBound = "true";
+    field.addEventListener("input", () => maybeClearInvalidFieldState(field));
+  }
+  if (focus && typeof field.focus === "function") {
+    focusDelayed(field);
+  }
+}
+
+function showRequiredFieldsError(message = "Bitte alle Pflichtfelder ausfüllen.") {
+  showToast(message || "Bitte alle Pflichtfelder ausfüllen.", "error");
 }
 
 function ensureSendingIndicator() {
@@ -363,4 +468,58 @@ function waitForUiPaint() {
   return new Promise(resolve => {
     requestAnimationFrame(() => resolve());
   });
+}
+
+function initSearchClearButtons() {
+  const searchInputs = Array.from(
+    document.querySelectorAll("input[id$='SearchInput'], #ticketSearchInput, #handbuchSearchInput, #handbuchStartSearchInput")
+  );
+
+  searchInputs.forEach(input => {
+    if (!input || input.dataset.clearSetup === "true") return;
+    const host = input.parentElement;
+    if (!host) return;
+
+    input.dataset.clearSetup = "true";
+    host.classList.add("search-clear-host");
+    input.classList.add("search-clear-input");
+
+    const targetId = input.id || `search-${Math.random().toString(36).slice(2)}`;
+    if (!input.id) input.id = targetId;
+
+    let clearBtn = host.querySelector(`.search-clear-btn[data-for="${targetId}"]`);
+    if (!clearBtn) {
+      clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "search-clear-btn";
+      clearBtn.dataset.for = targetId;
+      clearBtn.setAttribute("aria-label", "Suche leeren");
+      clearBtn.setAttribute("title", "Leeren");
+      clearBtn.textContent = "×";
+      host.appendChild(clearBtn);
+    }
+
+    const updateState = () => {
+      const hasValue = (input.value || "").trim().length > 0;
+      clearBtn.classList.toggle("is-visible", hasValue);
+      clearBtn.disabled = !hasValue;
+    };
+
+    input.addEventListener("input", updateState);
+    input.addEventListener("change", updateState);
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      updateState();
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    });
+
+    updateState();
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initSearchClearButtons);
+} else {
+  initSearchClearButtons();
 }

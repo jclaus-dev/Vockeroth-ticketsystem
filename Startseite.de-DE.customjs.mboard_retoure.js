@@ -7,7 +7,7 @@ function updateMboardRetoureUI() {
     el.parentElement.style.borderColor = el.value.trim() ? "green" : "black";
   });
   const filled = fields.every(el => el && el.value.trim());
-  buttons.mboardRetoureConfirm.style.color = filled ? "green" : "white";
+  setConfirmButtonReady(buttons.mboardRetoureConfirm, filled);
 }
 
 const retoureFields = [inputs.mboardOrder, inputs.mboardEAN, inputs.mboardCustomer, inputs.mboardState].filter(Boolean);
@@ -34,7 +34,29 @@ if (buttons.mboardRetoureConfirm) {
     const ean = inputs.mboardEAN.value.trim();
     const customer = inputs.mboardCustomer.value.trim();
     const state = inputs.mboardState.value.trim();
-    if (!(order && ean && customer && state) || hasSent) return;
+    let firstInvalid = null;
+    if (!order) {
+      markInvalidField(inputs.mboardOrder);
+      firstInvalid = firstInvalid || inputs.mboardOrder;
+    }
+    if (!ean) {
+      markInvalidField(inputs.mboardEAN);
+      firstInvalid = firstInvalid || inputs.mboardEAN;
+    }
+    if (!customer) {
+      markInvalidField(inputs.mboardCustomer);
+      firstInvalid = firstInvalid || inputs.mboardCustomer;
+    }
+    if (!state) {
+      markInvalidField(inputs.mboardState);
+      firstInvalid = firstInvalid || inputs.mboardState;
+    }
+    if (firstInvalid) {
+      showRequiredFieldsError();
+      focusDelayed(firstInvalid);
+      return;
+    }
+    if (hasSent) return;
 
     hasSent = true;
     const detailText = `Bestellnummer: ${order} | EAN: ${ean} | Kundenname: ${customer} | Zustand: ${state}`;
@@ -54,7 +76,7 @@ if (buttons.mboardRetoureConfirm) {
       text: detailText
     });
     [inputs.mboardOrder, inputs.mboardEAN, inputs.mboardCustomer, inputs.mboardState].forEach(inp => inp.value = "");
-    buttons.mboardRetoureConfirm.style.color = "white";
+    setConfirmButtonReady(buttons.mboardRetoureConfirm, false);
     showToast("Ticket für M-Board Retoure wurde erfolgreich erstellt.");
     showView("tile");
   } catch (err) {

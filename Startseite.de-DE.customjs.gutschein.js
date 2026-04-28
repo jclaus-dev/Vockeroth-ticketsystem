@@ -5,7 +5,7 @@ function resetGutscheinForm() {
   inputs.gutscheinWert.value = "";
   document.getElementById("kachelCode").style.borderColor = "";
   document.getElementById("kachelWert").style.borderColor = "";
-  arrowNext.style.color = "white";
+  setConfirmButtonReady(arrowNext, false);
 }
 
 function getEuroNumericValue() {
@@ -17,7 +17,7 @@ function updateGutscheinUI() {
   const wertOk = getEuroNumericValue();
   document.getElementById("kachelCode").style.borderColor = codeOk ? "green" : "";
   document.getElementById("kachelWert").style.borderColor = wertOk ? "green" : "";
-  arrowNext.style.color = codeOk && wertOk ? "green" : "white";
+  setConfirmButtonReady(arrowNext, codeOk && wertOk);
 }
 
 inputs.gutschein.addEventListener("input", updateGutscheinUI);
@@ -60,7 +60,13 @@ arrowNext.addEventListener("click", async e => {
   e.preventDefault();
   const code = inputs.gutschein.value.trim();
   const wert = getEuroNumericValue();
-  if (!code || !wert || hasSent) return;
+  if (!code || !wert) {
+    if (!code) markInvalidField(inputs.gutschein, true);
+    if (!wert) markInvalidField(inputs.gutscheinWert, !code);
+    showRequiredFieldsError();
+    return;
+  }
+  if (hasSent) return;
 
   hasSent = true;
   if (typeof recordTicket === "function") {

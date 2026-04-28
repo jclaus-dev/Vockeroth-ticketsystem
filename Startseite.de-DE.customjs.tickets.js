@@ -69,6 +69,7 @@ function recordTicket(entry) {
     personalnummer: inputs.persNr?.value.trim() || "",
     filialnummer: inputs.filNr?.value.trim() || "",
     done: false,
+    inProgress: false,
     typeKey: entry.typeKey || getTypeKeyFromName(entry.kachelname),
     ...entry
   };
@@ -247,7 +248,8 @@ function renderTickets() {
   emptyEl.style.display = "none";
   filtered.forEach((ticket, idx) => {
     const card = document.createElement("div");
-    card.className = `ticket-card${ticket.done ? " done" : ""} is-animated`;
+    const inProgressClass = !ticket.done ? " in-progress" : "";
+    card.className = `ticket-card${ticket.done ? " done" : ""}${inProgressClass} is-animated`;
     card.style.animationDelay = `${Math.min(200 * idx, 800)}ms`;
     card.dataset.id = ticket.id;
     card.dataset.ticketId = (ticket.ticketId || ticket.id || "").trim();
@@ -276,6 +278,9 @@ function renderTickets() {
     meta.className = "ticket-meta";
     meta.textContent = `Datum: ${formatDate(ticket.createdAt)} | Personalnummer ${ticket.personalnummer || "-"} | Filiale: ${ticket.filialnummer || "-"}`;
 
+    const initialBadgeMode = ticket.done ? "done" : "in-progress";
+    const statusBadge = createTicketStatusBadge(initialBadgeMode);
+    if (statusBadge) info.appendChild(statusBadge);
     info.appendChild(title);
     if (detailLines.length) info.appendChild(detailsBlock);
     info.appendChild(meta);
@@ -365,7 +370,7 @@ function exportTicketsToCsv(tickets) {
     const typeKey = ticket.typeKey || getTypeKeyFromName(ticket.kachelname);
     return [
       formatDate(ticket.createdAt),
-      ticket.done ? "Erledigt" : "Nicht erledigt",
+      ticket.done ? "Erledigt" : "In Bearbeitung",
       ticket.isFav ? "Ja" : "Nein",
       getTypeLabelFromKey(typeKey),
       ticket.kachelname || "Ticket",
@@ -392,6 +397,35 @@ function exportTicketsToCsv(tickets) {
 
 if (buttons.homeTab) {
   buttons.homeTab.addEventListener("click", () => showView("tile"));
+}
+
+function createTicketStatusBadge(mode) {
+  if (mode !== "done" && mode !== "in-progress") return null;
+  const badge = document.createElement("div");
+  badge.className = `ticket-status-badge ${mode}`;
+  badge.textContent = mode === "done" ? "ERLEDIGT" : "IN BEARBEITUNG";
+  return badge;
+}
+
+function upsertTicketStatusBadge(ticketEl, mode) {
+  if (!ticketEl) return;
+  const info = ticketEl.querySelector(".ticket-info");
+  if (!info) return;
+
+  const existing = info.querySelector(".ticket-status-badge");
+  if (mode !== "done" && mode !== "in-progress") {
+    if (existing) existing.remove();
+    return;
+  }
+
+  const badge = existing || createTicketStatusBadge(mode);
+  if (!badge) return;
+  badge.className = `ticket-status-badge ${mode}`;
+  badge.textContent = mode === "done" ? "ERLEDIGT" : "IN BEARBEITUNG";
+
+  if (!existing) {
+    info.insertBefore(badge, info.firstChild);
+  }
 }
 if (buttons.handbuchTab) {
   buttons.handbuchTab.addEventListener("click", () => {
@@ -420,6 +454,7 @@ const TICKET_STATUS_SELECTORS = {
 let ticketStatusSyncRunning = false;
 let ticketRefreshProgressTimer = null;
 let ticketTabOpenInFlight = null;
+let ticketStatusPollTimer = null;
 
 function isTicketsViewVisible() {
   if (!containers?.tickets) return false;
@@ -547,6 +582,8 @@ async function fetchTicketStatuses(ticketIds) {
 function markTicketDone(ticketEl) {
   ticketEl.classList.add("is-done");
   ticketEl.classList.add("done");
+  ticketEl.classList.remove("in-progress");
+  upsertTicketStatusBadge(ticketEl, "done");
 
   const checkbox = ticketEl.querySelector(TICKET_STATUS_SELECTORS.checkbox);
   if (checkbox) checkbox.checked = true;
@@ -555,9 +592,24 @@ function markTicketDone(ticketEl) {
   if (existingBadge) existingBadge.remove();
 }
 
+function markTicketInProgress(ticketEl) {
+  ticketEl.classList.remove("is-done");
+  ticketEl.classList.remove("done");
+  ticketEl.classList.add("in-progress");
+  upsertTicketStatusBadge(ticketEl, "in-progress");
+
+  const checkbox = ticketEl.querySelector(TICKET_STATUS_SELECTORS.checkbox);
+  if (checkbox) checkbox.checked = false;
+
+  const existingBadge = ticketEl.querySelector(TICKET_STATUS_SELECTORS.badge);
+  if (existingBadge) existingBadge.remove();
+}
+
 function markTicketUndone(ticketEl) {
   ticketEl.classList.remove("is-done");
   ticketEl.classList.remove("done");
+  ticketEl.classList.add("in-progress");
+  upsertTicketStatusBadge(ticketEl, "in-progress");
 
   const checkbox = ticketEl.querySelector(TICKET_STATUS_SELECTORS.checkbox);
   if (checkbox) checkbox.checked = false;
@@ -609,14 +661,58 @@ function isDoneStatus(statusRaw) {
   ].includes(status);
 }
 
+function isInProgressStatus(statusRaw) {
+  const status = normalizeStatus(statusRaw);
+  if (!status) return false;
+  if (status.includes("bearbeit")) return true;
+  if (status.includes("progress")) return true;
+  if (status.includes("pending")) return true;
+  return [
+    "in bearbeitung",
+    "bearbeitung",
+    "in progress",
+    "processing",
+    "pending",
+    "läuft",
+    "laeuft"
+  ].includes(status);
+}
+
+function extractStatusItemTicketId(item) {
+  const rawId =
+    item?.ticketId ??
+    item?.TicketID ??
+    item?.ticketID ??
+    item?.TicketId ??
+    item?.ticket_id ??
+    item?.id ??
+    item?.ID ??
+    item?.ticket ??
+    item?.Ticket ??
+    "";
+  return String(rawId).trim();
+}
+
+function extractStatusItemState(item) {
+  return (
+    item?.status ??
+    item?.Status ??
+    item?.state ??
+    item?.State ??
+    item?.ticketStatus ??
+    item?.TicketStatus ??
+    ""
+  );
+}
+
 function applyStatusesToDom(tickets, options = {}) {
   const renderOnLocalChange = options.renderOnLocalChange !== false;
   if (!Array.isArray(tickets) || !tickets.length) return;
 
   const statusMap = new Map();
   tickets.forEach(item => {
-    const id = (item?.ticketId || item?.TicketID || item?.ticketID || item?.id || "").trim();
-    const status = normalizeStatus(item?.status ?? item?.Status);
+    const id = extractStatusItemTicketId(item);
+    const status = normalizeStatus(extractStatusItemState(item));
     if (id) statusMap.set(id, status);
   });
   if (!statusMap.size) return;
@@ -631,8 +727,10 @@ function applyStatusesToDom(tickets, options = {}) {
     if (!status) return;
 
     const shouldBeDone = isDoneStatus(status);
-    if (ticket.done !== shouldBeDone) {
+    const shouldBeInProgress = !shouldBeDone && isInProgressStatus(status);
+    if (ticket.done !== shouldBeDone || !!ticket.inProgress !== shouldBeInProgress) {
       ticket.done = shouldBeDone;
+      ticket.inProgress = shouldBeInProgress;
       hasLocalChanges = true;
     }
   });
@@ -656,6 +754,8 @@ function applyStatusesToDom(tickets, options = {}) {
     if (!status) return;
     if (isDoneStatus(status)) {
       markTicketDone(ticketEl);
+    } else if (isInProgressStatus(status)) {
+      markTicketInProgress(ticketEl);
     } else {
       markTicketUndone(ticketEl);
     }
@@ -693,7 +793,22 @@ async function refreshTicketStatuses(options = {}) {
 }
 
 function startTicketStatusPolling() {
-  // Intentionally empty: Statusabfrage nur beim Öffnen der Ticketansicht.
+  if (ticketStatusPollTimer) return;
+  if (isTicketsViewVisible()) {
+    refreshTicketStatuses({
+      force: false,
+      includeStorage: true,
+      renderOnLocalChange: true
+    });
+  }
+  ticketStatusPollTimer = setInterval(() => {
+    if (!isTicketsViewVisible()) return;
+    refreshTicketStatuses({
+      force: false,
+      includeStorage: true,
+      renderOnLocalChange: true
+    });
+  }, 12000);
 }
 
 async function openTicketsViewWithFreshSync() {
@@ -735,7 +850,7 @@ updateTicketsTabLabel(initialOpenCount);
 const HANDBUCH_DATA = {
   mboard: {
     title: "M-board",
-    subtitle: "Handbuch fÃ¼r M-board, Bestellungen und Versand",
+    subtitle: "Handbuch für M-board, Bestellungen und Versand",
     count: "6 Beitraege",
     sections: [
       {
@@ -753,7 +868,7 @@ const HANDBUCH_DATA = {
   },
   zalando: {
     title: "Zalando",
-    subtitle: "Handbuch fÃ¼r Zalando",
+    subtitle: "Handbuch für Zalando",
     count: "7 Beitraege",
     sections: [
       {
@@ -764,15 +879,15 @@ const HANDBUCH_DATA = {
           "Bestellungen nachdrucken",
           "Bestellung melden",
           "Stornierungen",
-          "Button nicht VerfÃ¼gbar",
+          "Button nicht Verfügbar",
           "Retouren",
         ]
       }
     ]
   },
   umtausch: {
-    title: "StationÃ¤res GeschÃ¤ft",
-    subtitle: "Alles rund um StationÃ¤res GeschÃ¤ft",
+    title: "Stationäres Geschäft",
+    subtitle: "Alles rund um Stationäres Geschäft",
     count: "2 Beitraege",
     sections: [
       {
@@ -785,14 +900,14 @@ const HANDBUCH_DATA = {
     ]
   },
   abschliessen: {
-    title: "AbschlieÃŸen der Bestellungen (Zalando & M-Board)",
-    subtitle: "Bestellungen tÃ¤glich abschlieÃŸen",
+    title: "Abschlie�Yen der Bestellungen (Zalando & M-Board)",
+    subtitle: "Bestellungen täglich abschlie�Yen",
     count: "1 Beitrag",
     sections: [
       {
-        title: "AbschlieÃŸen",
+        title: "Abschlie�Yen",
         items: [
-          "AbschlieÃŸen der Bestellungen (Zalando & M-Board)",
+          "Abschlie�Yen der Bestellungen (Zalando & M-Board)",
         ]
       }
     ]
@@ -814,13 +929,13 @@ const HANDBUCH_DATA = {
   },
   paketversand: {
     title: "Paketversand",
-    subtitle: "Atrikel prÃ¼fen und Verpackung",
+    subtitle: "Atrikel prüfen und Verpackung",
     count: "2 Beitraege",
     sections: [
       {
         title: "Bestellungen",
         items: [
-          "Artikel prÃ¼fen",
+          "Artikel prüfen",
           "Richtig verpacken",
         ]
       }
@@ -845,17 +960,52 @@ const HANDBUCH_DATA = {
 let currentHandbuchKey = "mboard";
 let currentHandbuchQuery = "";
 let handbuchStartIndex = null;
+let handbuchArticleBackTarget = "handbuchDetail";
+
+function goBackFromHandbuchArticle() {
+  if (handbuchArticleBackTarget === "handbuch") {
+    showView("handbuch");
+    return;
+  }
+  renderHandbuchDetail(currentHandbuchKey);
+  showView("handbuchDetail");
+}
 
 function normalizeHandbuchText(text) {
-  return (text || "")
+  return repairHandbuchText(text)
     .toString()
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/ÃŸ/g, "ss")
+    .replace(/�Y/g, "ss")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function repairHandbuchText(text) {
+  return (text || "")
+    .toString()
+    .replace(/M�\?'Board/g, "M-Board")
+    .replace(/Online�\?'Team/g, "Online-Team")
+    .replace(/Zalando�\?'Retouren/g, "Zalando-Retouren")
+    .replace(/E�\?'Mail�\?'Adresse/g, "E-Mail-Adresse")
+    .replace(/E�\?'Mail/g, "E-Mail")
+    .replace(/E-MailAdresse/g, "E-Mail-Adresse")
+    .replace(/Anmelde-EMail/g, "Anmelde-E-Mail")
+    .replace(/regelmä�Yig/g, "regelmäßig")
+    .replace(/ordnungsgemä�Y/g, "ordnungsgemäß")
+    .replace(/ausschlie�Ylich/g, "ausschließlich")
+    .replace(/abschlie�Yend/g, "abschließend")
+    .replace(/Abschlie�Yeen/g, "Abschließen")
+    .replace(/Abschlie�Yen/g, "Abschließen")
+    .replace(/Grö�Ye/g, "Größe")
+    .replace(/gro�Yen/g, "großen")
+    .replace(/verschlie�Yen/g, "verschließen")
+    .replace(/�\?z/g, "„")
+    .replace(/�\?o/g, "“")
+    .replace(/�\?�/g, "“")
+    .replace(/erscheintz/g, "erscheint");
 }
 
 function splitHandbuchQuery(query) {
@@ -887,7 +1037,7 @@ function buildHandbuchStartIndex() {
     data.sections.forEach(section => {
       (section.items || []).forEach(item => {
         const rawHtml = getHandbuchArticleContent(key, section.title || "", item);
-        const contentText = stripHandbuchHtml(rawHtml);
+        const contentText = stripHandbuchHtml(repairHandbuchText(rawHtml));
         index.push({
           key,
           collection: data.title || key,
@@ -944,13 +1094,14 @@ function renderHandbuchStartResults(query) {
     row.className = "handbuch-start-result";
     row.innerHTML = `
       <div>
-        <div class="handbuch-start-result-title">${item.title}</div>
-        <div class="handbuch-start-result-meta">${item.collection} Â· ${item.section}</div>
+        <div class="handbuch-start-result-title">${repairHandbuchText(item.title)}</div>
+        <div class="handbuch-start-result-meta">${repairHandbuchText(item.collection)} · ${repairHandbuchText(item.section)}</div>
       </div>
-      <div class="handbuch-start-result-chevron">â€º</div>
+      <div class="handbuch-start-result-chevron">›</div>
     `;
     row.addEventListener("click", () => {
       currentHandbuchKey = item.key;
+      handbuchArticleBackTarget = "handbuch";
       renderHandbuchDetail(item.key);
       renderHandbuchArticle(item.section, item.title);
       showView("handbuchArticle");
@@ -975,7 +1126,7 @@ function renderHandbuchSections(data, query) {
     const wrapper = document.createElement("div");
     wrapper.className = "handbuch-section";
     const header = document.createElement("h4");
-    header.textContent = section.title;
+    header.textContent = repairHandbuchText(section.title);
     wrapper.appendChild(header);
 
     items.forEach(item => {
@@ -984,7 +1135,7 @@ function renderHandbuchSections(data, query) {
       row.className = "handbuch-article";
       row.dataset.sectionTitle = section.title;
       row.dataset.articleTitle = item;
-      row.innerHTML = `<span class="handbuch-article-title-text">${item}</span><span class="handbuch-article-chevron">â€º</span>`;
+      row.innerHTML = `<span class="handbuch-article-title-text">${repairHandbuchText(item)}</span><span class="handbuch-article-chevron">›</span>`;
       wrapper.appendChild(row);
     });
 
@@ -996,6 +1147,7 @@ function renderHandbuchSections(data, query) {
     article.addEventListener("click", () => {
       const sectionTitle = article.dataset.sectionTitle || "";
       const articleTitle = article.dataset.articleTitle || "";
+      handbuchArticleBackTarget = "handbuchDetail";
       renderHandbuchArticle(sectionTitle, articleTitle);
       showView("handbuchArticle");
     });
@@ -1012,10 +1164,10 @@ function renderHandbuchDetail(key) {
   if (!titleEl) return;
 
   currentHandbuchKey = key;
-  titleEl.textContent = data.title;
-  subEl.textContent = data.subtitle;
-  countEl.textContent = data.count;
-  if (crumbEl) crumbEl.textContent = data.title;
+  titleEl.textContent = repairHandbuchText(data.title);
+  subEl.textContent = repairHandbuchText(data.subtitle);
+  countEl.textContent = repairHandbuchText(data.count);
+  if (crumbEl) crumbEl.textContent = repairHandbuchText(data.title);
 
   renderHandbuchSections(data, currentHandbuchQuery);
 }
@@ -1031,6 +1183,7 @@ function initHandbuchLinks() {
   });
 
   const backLink = document.getElementById("handbuchBackLink");
+  const detailBreadcrumb = document.querySelector("#containerHandbuchDetail .handbuch-breadcrumb");
   if (backLink) {
     backLink.addEventListener("click", e => {
       e.preventDefault();
@@ -1038,12 +1191,42 @@ function initHandbuchLinks() {
     });
   }
 
+  const detailBackButton = document.getElementById("handbuchDetailBackBtn");
+  if (detailBackButton) {
+    detailBackButton.textContent = "";
+    detailBackButton.setAttribute("aria-label", "Zurueck");
+    detailBackButton.setAttribute("title", "Zurueck");
+    const detailTopActions = detailBackButton.closest(".handbuch-top-actions");
+    if (detailTopActions) detailTopActions.style.display = "none";
+    if (detailBreadcrumb && !detailBreadcrumb.contains(detailBackButton)) {
+      detailBreadcrumb.insertBefore(detailBackButton, backLink || detailBreadcrumb.firstChild);
+    }
+    detailBackButton.addEventListener("click", () => {
+      showView("handbuch");
+    });
+  }
+
   const backArticle = document.getElementById("handbuchArticleBackLink");
+  const articleBreadcrumb = document.querySelector("#containerHandbuchArticle .handbuch-breadcrumb");
   if (backArticle) {
     backArticle.addEventListener("click", e => {
       e.preventDefault();
-      renderHandbuchDetail(currentHandbuchKey);
-      showView("handbuchDetail");
+      goBackFromHandbuchArticle();
+    });
+  }
+
+  const articleBackButton = document.getElementById("handbuchArticleBackBtn");
+  if (articleBackButton) {
+    articleBackButton.textContent = "";
+    articleBackButton.setAttribute("aria-label", "Zurueck");
+    articleBackButton.setAttribute("title", "Zurueck");
+    const articleTopActions = articleBackButton.closest(".handbuch-top-actions");
+    if (articleTopActions) articleTopActions.style.display = "none";
+    if (articleBreadcrumb && !articleBreadcrumb.contains(articleBackButton)) {
+      articleBreadcrumb.insertBefore(articleBackButton, backArticle || articleBreadcrumb.firstChild);
+    }
+    articleBackButton.addEventListener("click", () => {
+      goBackFromHandbuchArticle();
     });
   }
 
@@ -1106,12 +1289,12 @@ const HANDBUCH_ARTICLE_CONTENT = {
     `,
     "M-Board aktualisieren": `
       <div class="handbuch-article-block">
-        <p>Das Mâ€‘Board aktualisiert sich nicht immer automatisch. Bitte
-        denkt daher daran, es regelmÃ¤ÃŸig manuell zu aktualisieren. Ihr
-        kÃ¶nnt entweder oben rechts auf die drei Punkte klicken und dort
-        â€žAktualisierenâ€œ im M-Board auswÃ¤hlen, oder alternativ die
-        komplette Seite Ã¼ber den runden Pfeil oben links neu laden..<br><br>
-        Das hilft auch in FÃ¤llen, in denen ihr eine Bestellung nicht sofort
+        <p>Das M�?'Board aktualisiert sich nicht immer automatisch. Bitte
+        denkt daher daran, es regelmä�Yig manuell zu aktualisieren. Ihr
+        könnt entweder oben rechts auf die drei Punkte klicken und dort
+        �?zAktualisieren�?o im M-Board auswählen, oder alternativ die
+        komplette Seite über den runden Pfeil oben links neu laden..<br><br>
+        Das hilft auch in Fällen, in denen ihr eine Bestellung nicht sofort
         findet.</p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/M-Board_Aktualisieren.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
@@ -1135,18 +1318,18 @@ const HANDBUCH_ARTICLE_CONTENT = {
     "Reservierung": `
       <div class="handbuch-article-block">
        <p>Reservierungen werden separat im M-Board angezeigt mit dem Status
-          â€œAngekÃ¼ndigtâ€. Bitte nutzt hierfÃ¼r den Reiter â€œAngekÃ¼ndigtâ€.</p>
+          �?oAngekündigt�?�. Bitte nutzt hierfür den Reiter �?oAngekündigt�?�.</p>
           <div style="padding-top: 12px;">
             <img src="web-files/Handbuch_images/M-Board_Reservierungen.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
           </div
-          <p>Druckt die Pickliste und drÃ¼ckt den â€œPickenâ€ Button fÃ¼r das
-          ZurÃ¼cklegen der Ware
-          oder den â€œMeldenâ€ Button, wenn ihr die Ware nicht vorhanden
+          <p>Druckt die Pickliste und drückt den �?oPicken�?� Button für das
+          Zurücklegen der Ware
+          oder den �?oMelden�?� Button, wenn ihr die Ware nicht vorhanden
           habt.
-          Die Bestellung bleibt nach dem Picken im Reiter â€œAngekÃ¼ndigtâ€. Da die
-          Reservierungen/Bestellung im Reiter â€œAngekÃ¼ndigtâ€ bleiben, bitte
-          regelmÃ¤ÃŸig eure Reservierungen kontrollieren. Sobald der Kunde die
-          Bestellung bezahlt hat, erscheintz die Bestellung im Reiter â€œOffenâ€..
+          Die Bestellung bleibt nach dem Picken im Reiter �?oAngekündigt�?�. Da die
+          Reservierungen/Bestellung im Reiter �?oAngekündigt�?� bleiben, bitte
+          regelmä�Yig eure Reservierungen kontrollieren. Sobald der Kunde die
+          Bestellung bezahlt hat, erscheintz die Bestellung im Reiter �?oOffen�?�..
         </p>
       </div>
     `
@@ -1155,8 +1338,8 @@ const HANDBUCH_ARTICLE_CONTENT = {
   zalando: {
     "Anmeldung": `
       <div class="handbuch-article-block">
-        <p>Bitte in das Feld E-Mail-Adresse klicken und die entsprechende E-MailAdresse auswÃ¤hlen. Das Passwort ist gespeichert und wird automatisch
-        ausgefÃ¼llt. Falls nicht, bitte erneut ins Feld klicken und die Anmelde-EMail auswÃ¤hlen. Zum Schluss â€œBestÃ¤tigenâ€ klicken.</p>
+        <p>Bitte in das Feld E-Mail-Adresse klicken und die entsprechende E-MailAdresse auswählen. Das Passwort ist gespeichert und wird automatisch
+        ausgefüllt. Falls nicht, bitte erneut ins Feld klicken und die Anmelde-EMail auswählen. Zum Schluss �?oBestätigen�?� klicken.</p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/M-Board_Anmeldung.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
         </div>
@@ -1164,7 +1347,7 @@ const HANDBUCH_ARTICLE_CONTENT = {
     `,
     "Passwort abgelaufen": `
       <div class="handbuch-article-block">
-        <p>Wenn ein neues Passwort benÃ¶tigt wird, meldet dies bitte Ã¼ber
+        <p>Wenn ein neues Passwort benötigt wird, meldet dies bitte über
         das Ticketsystem. Das Onlineteam richtet euch dann ein neues
         Passwort ein und meldet euch wieder an. Gebt dabei bitte auch
         an, an welchen Computern das neue Passwort hinterlegt werden
@@ -1174,8 +1357,8 @@ const HANDBUCH_ARTICLE_CONTENT = {
     "Bestellungen nachdrucken": `
       <div class="handbuch-article-block">
         <p>Um Picklisten nachzudrucken, klickt man oben rechts auf den Button
-        â€œDrucke Picklisteâ€.<p><p>
-        Wenn links ein kleiner grÃ¼ner Haken erscheint, wurde die Pickliste bereits
+        �?oDrucke Pickliste�?�.<p><p>
+        Wenn links ein kleiner grüner Haken erscheint, wurde die Pickliste bereits
         gedruckt.</p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/M-Board_Bestellungen nachdrucken.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
@@ -1184,29 +1367,29 @@ const HANDBUCH_ARTICLE_CONTENT = {
     `,
     "Bestellung melden": `
       <div class="handbuch-article-block">
-        <p>Zalando Bestellungen werden ausschlieÃŸlich Ã¼ber das Ticketsystem
+        <p>Zalando Bestellungen werden ausschlie�Ylich über das Ticketsystem
         gemeldet. Das Online Team bearbeitet diese dann.
-        Gemeldete Bestellungen bleiben weiterhin unter â€žOffene Bestellungenâ€œ
-        sichtbar und werden nicht automatisch ausgeblendet wie im Mâ€‘Board.</p>
+        Gemeldete Bestellungen bleiben weiterhin unter �?zOffene Bestellungen�?o
+        sichtbar und werden nicht automatisch ausgeblendet wie im M�?'Board.</p>
       </div>
     `,
     "Stornierungen": `
       <div class="handbuch-article-block">
         <p style="text-decoration: underline; color: red;">Bitte keine Bestellungen stornieren!<p>
-        <p>Achtet beim AbschlieÃŸen unbedingt darauf, nicht versehentlich auf den
-        Button â€žStornierenâ€œ zu klicken. Dieser wird angezeigt, wenn wir eure
-        gemeldeten Anfragen bearbeiten und kein weiterer Bestand fÃ¼r die
-        jeweilige Bestellung verfÃ¼gbar ist.</p>
+        <p>Achtet beim Abschlie�Yen unbedingt darauf, nicht versehentlich auf den
+        Button �?zStornieren�?o zu klicken. Dieser wird angezeigt, wenn wir eure
+        gemeldeten Anfragen bearbeiten und kein weiterer Bestand für die
+        jeweilige Bestellung verfügbar ist.</p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/M-Board_Stornierungen.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
         </div>
       </div>
     `,
-    "Button nicht VerfÃ¼gbar": `
+    "Button nicht Verfügbar": `
       <div class="handbuch-article-block">
-        <p style="text-decoration: underline; color: red;">Bitte setzt keine Bestellungen eigenstÃ¤ndig auf â€žNicht verfÃ¼gbarâ€œ.<p>
-        <p>Sollte kein Bestand vorhanden sein, Ã¼bernimmt das Onlineâ€‘Team die
-        PrÃ¼fung und stellt die Bestellung entsprechend auf â€žNicht verfÃ¼gbarâ€œ.</p>
+        <p style="text-decoration: underline; color: red;">Bitte setzt keine Bestellungen eigenständig auf �?zNicht verfügbar�?o.<p>
+        <p>Sollte kein Bestand vorhanden sein, übernimmt das Online�?'Team die
+        Prüfung und stellt die Bestellung entsprechend auf �?zNicht verfügbar�?o.</p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/M-Board_Stornierungen.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
         </div>
@@ -1214,22 +1397,22 @@ const HANDBUCH_ARTICLE_CONTENT = {
     `,
     "Retouren": `
       <div class="handbuch-article-block">
-        <p>1. Wenn ihr Zalandoâ€‘Retouren erhaltet, bearbeitet diese bitte zeitnah, damit
-        der Kunde seine RÃ¼ckerstattung schnell erhÃ¤lt.<p>
+        <p>1. Wenn ihr Zalando�?'Retouren erhaltet, bearbeitet diese bitte zeitnah, damit
+        der Kunde seine Rückerstattung schnell erhält.<p>
         Solltet ihr eine Retoure bekommen, die nicht von eurer Filiale versendet
-        wurde, meldet dies bitte an folgende Eâ€‘Mailâ€‘Adresse: onlinevockeroth@vockeroth.com</p>
+        wurde, meldet dies bitte an folgende E�?'Mail�?'Adresse: onlinevockeroth@vockeroth.com</p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/M-Board_Retouren.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
         </div>
-        <p><br>2. Wenn ihr auf â€žRetourenmeldung erstellenâ€œ klickt, mÃ¼sst ihr anschlieÃŸend
-        einen RÃ¼ckgabegrund auswÃ¤hlen. Dieser steht auf dem Retourenschein.<p>
-        Hat der Kunde keinen Grund angegeben, wÃ¤hlt bitte â€žKein Grund
-        verfÃ¼gbarâ€œ</p>
+        <p><br>2. Wenn ihr auf �?zRetourenmeldung erstellen�?o klickt, müsst ihr anschlie�Yend
+        einen Rückgabegrund auswählen. Dieser steht auf dem Retourenschein.<p>
+        Hat der Kunde keinen Grund angegeben, wählt bitte �?zKein Grund
+        verfügbar�?o</p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/M-Board_Retouren-2.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
         </div>
         <p><br>3. Zum Schluss ist es wichtig, dass ihr auf den Button
-        â€žRetourenbestÃ¤tigungâ€œ klickt. Ohne diesen Schritt wird die Retoure nicht
+        �?zRetourenbestätigung�?o klickt. Ohne diesen Schritt wird die Retoure nicht
         verbucht.<p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/M-Board_Retouren-3.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
@@ -1242,26 +1425,26 @@ const HANDBUCH_ARTICLE_CONTENT = {
     "Umtausch einer Online Bestellung": `
       <div class="handbuch-article-block">
         <p>
-          1. Der Kunde mÃ¶chte einen Online gekauften Artikel umtauschen. Wir benÃ¶tigen von dem Kunden
-          einen RÃ¼cksendeschein / Lieferschein. Bitte den EAN am Lieferschein und am Etikett vergleichen
-          und auf Tragespuren / Defekte prÃ¼fen.
+          1. Der Kunde möchte einen Online gekauften Artikel umtauschen. Wir benötigen von dem Kunden
+          einen Rücksendeschein / Lieferschein. Bitte den EAN am Lieferschein und am Etikett vergleichen
+          und auf Tragespuren / Defekte prüfen.
         <p>
 
         <p>
-          2. Stimmt die EAN des Lieferscheins mit der EAN am Etikett Ã¼berein und sind keine Tragespuren /
+          2. Stimmt die EAN des Lieferscheins mit der EAN am Etikett überein und sind keine Tragespuren /
           Defekte vorhanden kann der Artikel umgetauscht werden.
           <ul class="online-umtausch-bullets">
             <li>Online Retourenschein als Quittung mitgeben</li>
-            <li>Das Online Team wird dem Kunden im Nachgang die Gutschrift Ã¼ber die ursprÃ¼ngliche Zahlungsart Ã¼bermitteln.</li>
+            <li>Das Online Team wird dem Kunden im Nachgang die Gutschrift über die ursprüngliche Zahlungsart übermitteln.</li>
           </ul>
         <p>
 
         <p>
-          3. Hierzu mÃ¼sst Ihr uns eine Mail schreiben an: <span class="email">online-vockeroth@vockeroth.com</span> mit folgenden Daten:
+          3. Hierzu müsst Ihr uns eine Mail schreiben an: <span class="email">online-vockeroth@vockeroth.com</span> mit folgenden Daten:
           <ul class="online-umtausch-bullets">
             <li>Order-ID und Kundennamen (dies findet Ihr oben rechts auf dem Lieferschein)</li>
-            <li>RÃ¼ckgabegrund (falls vorhanden)</li>
-            <li>das es ein stationÃ¤rer Umtausch war</li>
+            <li>Rückgabegrund (falls vorhanden)</li>
+            <li>das es ein stationärer Umtausch war</li>
             <li>EAN des Artikels</li>
           </ul>
         <p>
@@ -1270,7 +1453,7 @@ const HANDBUCH_ARTICLE_CONTENT = {
           4. Im Anschluss teilen wir euch mit, an welche Filiale ihr den Artikel senden sollt
         <p>     
        
-        PrÃ¼fung und stellt die Bestellung entsprechend auf â€žNicht verfÃ¼gbarâ€œ.</p><br>
+        Prüfung und stellt die Bestellung entsprechend auf �?zNicht verfügbar�?o.</p><br>
         <p style="text-decoration: underline; color: red;">Wichtig: Nicht umlagern<p>
       </div>
     `,
@@ -1288,13 +1471,13 @@ const HANDBUCH_ARTICLE_CONTENT = {
   },
 
   abschliessen: { 
-    "AbschlieÃŸen der Bestellungen (Zalando & M-Board)": `
+    "Abschlie�Yen der Bestellungen (Zalando & M-Board)": `
       <div class="handbuch-article-block">
         <p>Bitte achtet darauf, dass alle Bestellungen im M-Board und auf Zalando
-        ordnungsgemÃ¤ÃŸ am Abend abgeschlossen werden.<p>
+        ordnungsgemä�Y am Abend abgeschlossen werden.<p>
       </div>
       <div style="padding-top: 12px;">
-        <img src="web-files/Handbuch_images/M-Board_AbschlieÃŸeen der Bestellungen.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
+        <img src="web-files/Handbuch_images/M-Board_Abschlie�Yeen der Bestellungen.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
       </div>
     `
   },
@@ -1302,10 +1485,10 @@ const HANDBUCH_ARTICLE_CONTENT = {
   irics: {
     "Online gesperrt": `
       <div class="handbuch-article-block">
-        <p>bedeutet, dass ein Artikel im System vorÃ¼bergehend nicht fÃ¼r den OnlineVerkauf verfÃ¼gbar ist. Beispiele dafÃ¼r sind:<p>
-        <li>Wenn ein Artikel beschÃ¤digt oder fehlerhaft ist. (Auf die neutrale
+        <p>bedeutet, dass ein Artikel im System vorübergehend nicht für den OnlineVerkauf verfügbar ist. Beispiele dafür sind:<p>
+        <li>Wenn ein Artikel beschädigt oder fehlerhaft ist. (Auf die neutrale
         Filiale gebucht wurde)</li>
-        <li>Wenn ein Artikel nicht mehr verfÃ¼gbar ist z. B. weil er ausverkauft ist,
+        <li>Wenn ein Artikel nicht mehr verfügbar ist z. B. weil er ausverkauft ist,
         kann er gesperrt werden, um zu verhindern, dass Kunden ihn
         bestellen.</li>
       </div>
@@ -1316,7 +1499,7 @@ const HANDBUCH_ARTICLE_CONTENT = {
     "Letztes Update": `
       <div class="handbuch-article-block">
         <p>das letzte Update bedeutet, dass Informationen oder Daten im System aktualisiert wurden. Wenn zum Beispiel:<p>
-        <li>der Preis eines Produkts geÃ¤ndert wurde</li>
+        <li>der Preis eines Produkts geändert wurde</li>
         <li>der Lagerbestand aktualisiert wurde, dann ist das ein Update.</li><br>
         <p>Es ist im Grunde genommen eine Aktualisierung, die im System
         stattgefunden hat.<p>
@@ -1330,11 +1513,11 @@ const HANDBUCH_ARTICLE_CONTENT = {
         <p>Das bedeutet, dass ein Artikel oder eine Ware im System nicht richtig erfasst wurde. Das kann passieren, wenn:<p>
         <li>ein Artikel nicht an der selben Kasse bearbeitet wurde</li>
         <li>der Wareneingang nicht korrekt verbucht wurde.</li>
-        <li>Manchmal gibt es technische Probleme, die dazu fÃ¼hren
-        kÃ¶nnen, dass Artikel nicht erfasst werden.
+        <li>Manchmal gibt es technische Probleme, die dazu führen
+        können, dass Artikel nicht erfasst werden.
         </li>
         <li>Fehler bei der manuellen Eingabe oder beim Scannen von
-        Barcodes kÃ¶nnen ebenfalls dazu fÃ¼hren, dass Artikel nicht
+        Barcodes können ebenfalls dazu führen, dass Artikel nicht
         korrekt erfasst werden.</li>
       </div>
       <div style="padding-top: 12px;">
@@ -1343,25 +1526,25 @@ const HANDBUCH_ARTICLE_CONTENT = {
     `
   },
   paketversand: {
-    "Artikel prÃ¼fen": `
+    "Artikel prüfen": `
       <div class="handbuch-article-block">
-        <p>Bevor der Artikel versendet werdet prÃ¼ft bitte ob:<p>
+        <p>Bevor der Artikel versendet werdet prüft bitte ob:<p>
         <li>die Rotpreise entfernt sind</li>
-        <li>die EAN auf der Pickliste und auf dem Etikett Ã¼bereinstimmen</li>
+        <li>die EAN auf der Pickliste und auf dem Etikett übereinstimmen</li>
         <li>alle Warensicherungen entfernt sind</li>
       </div>
     `,
     "Richtig verpacken": `
       <div class="handbuch-article-block">
       <li>Kleider, BHs, Taschen und Schuhe bitte in Kartons einpacken.</li>
-      <li>Die Kleider zusÃ¤tzlich in Seidenpapier einpacken.</li>
+      <li>Die Kleider zusätzlich in Seidenpapier einpacken.</li>
       <li>Die Cups von den BHs sollen nicht ineinander geklappt
       werden, sondern ordentlich aufgeklappt im Karton liegen.</li><br>
-      <p>Bitte achtet auf die GrÃ¶ÃŸe vom Verpackungsmaterial.<p>
-      <li>keine unnÃ¶tig groÃŸen TÃ¼ten fÃ¼r z.B. T-Shirts verwenden.</li>
-      <li>Dazu kÃ¶nnt Ihr euch auch nochmal den Newsletter
-      â€œVerpacken in verschiedene Karton und VersandtÃ¼tenâ€
-      anschauen. Dort sind auch die verschiedenen GrÃ¶ÃŸen des
+      <p>Bitte achtet auf die Grö�Ye vom Verpackungsmaterial.<p>
+      <li>keine unnötig gro�Yen Tüten für z.B. T-Shirts verwenden.</li>
+      <li>Dazu könnt Ihr euch auch nochmal den Newsletter
+      �?oVerpacken in verschiedene Karton und Versandtüten�?�
+      anschauen. Dort sind auch die verschiedenen Grö�Yen des
       Verpackungsmaterial vermerkt.</li><br>
       <p>Fehlendes Verpackungsmaterial bitte an: b.danzer@vockeroth.com melden.<p>
       </div>
@@ -1373,7 +1556,7 @@ const HANDBUCH_ARTICLE_CONTENT = {
       <div class="handbuch-article-block">
         <p>1. Priorisierung<p>
         <p>Online-Shop-Bestellungen werden bitte immer vorrangig bearbeitet.<p><br>
-        <p>2. Besondere Verpackungsart (nur fÃ¼r Online-ShopBestellungen) Materialien (werden euch bereitgestellt):<p>
+        <p>2. Besondere Verpackungsart (nur für Online-ShopBestellungen) Materialien (werden euch bereitgestellt):<p>
         <li>Seidenpapier</li>
         <li>Sticker</li>
         <li>Vockeroth-Karte</li><br>
@@ -1386,14 +1569,14 @@ const HANDBUCH_ARTICLE_CONTENT = {
       <div class="handbuch-article-block">
         <p>Schritt 1:<br>
         Artikel vorbereiten<br>
-        Wenn mÃ¶glich, Artikel in A4 Format falten<br>
+        Wenn möglich, Artikel in A4 Format falten<br>
         Den/die Artikel ordentlich in Seidenpapier falten.<p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/Onlineshop-Bestellungen_Vorgehen beim Verpacken-1.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
         </div><br>
         <p>Schritt 2:<br>
-        Verpackung verschlieÃŸen<br>
-        Offene Seite des Seidenpapiers mit einem Sticker verschlieÃŸen.<p>
+        Verpackung verschlie�Yen<br>
+        Offene Seite des Seidenpapiers mit einem Sticker verschlie�Yen.<p>
         <div style="padding-top: 12px;">
           <img src="web-files/Handbuch_images/Onlineshop-Bestellungen_Vorgehen beim Verpacken.png" alt="Picklisten nachdrucken" style="max-width: 100%; border-radius: 10px; border: 1px solid #e6e6e6; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);" />
         </div><br>
@@ -1438,14 +1621,14 @@ function renderHandbuchArticle(sectionTitle, articleTitle) {
   const sub = document.querySelector(".handbuch-article-sub");
   const content = document.getElementById("handbuchArticleContent");
   const data = HANDBUCH_DATA[currentHandbuchKey];
-  if (crumb && data) crumb.textContent = data.title;
-  if (section) section.textContent = sectionTitle;
-  if (titleCrumb) titleCrumb.textContent = articleTitle;
-  if (title) title.textContent = articleTitle;
+  if (crumb && data) crumb.textContent = repairHandbuchText(data.title);
+  if (section) section.textContent = repairHandbuchText(sectionTitle);
+  if (titleCrumb) titleCrumb.textContent = repairHandbuchText(articleTitle);
+  if (title) title.textContent = repairHandbuchText(articleTitle);
   if (sub) sub.textContent = "";
   if (content) {
     const html = getHandbuchArticleContent(currentHandbuchKey, sectionTitle, articleTitle);
-    content.innerHTML = html || "<p>Kein Inhalt vorhanden.</p>";
+    content.innerHTML = repairHandbuchText(html || "<p>Kein Inhalt vorhanden.</p>");
   }
 }
 
