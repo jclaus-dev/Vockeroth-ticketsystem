@@ -10,40 +10,36 @@ const SESSION_KEYS = {
 };
 
 const FILIAL_MAP = {
-  "1":  "Homberg",
-  "0":  "Melsungen",
-  "2":  "Melsungen",
-  "3": "Jack & Jones",
+  "1": "TEST_Fil",
+  "0": "Melsungen",
+  "2": "Online Filiale",
+  "3": "Bad Hersfeld Jack&Jones",
   "4": "Fritzlar",
-  "6": "Kassel",
-  "9": "Arnsberg",
-  "10": "Kassel",
-  "11": "Kassel",
+  "5": "Schwalmstadt",
+  "6": "Kassel DEZ Vockeroth",
+  "7": "Göttingen",
+  "9": "Arnsberg Zebra 21",
+  "14": "Einbeck Schünemann",
   "15": "Nordhausen",
   "16": "Hann. Münden",
   "18": "Eschwege",
-  "20": "Eschwege",
-  "22": "Homberg",
-  "23": "Nordhausen",
-  "24": "Goslar",
+  "20": "Eschwege Outlet",
+  "24": "Goslar Kaiserpassage",
   "25": "Goslar",
-  "27": "Soest",
-  "29": "Bad Hersfeld",
+  "27": "Soest HAKA",
+  "29": "Bad Hersfeld S.Oliver",
+  "30": "Kassel DEZ s.Oliver",
   "40": "Bad Hersfeld",
-  "43": "Bad Hersfeld",
-  "47": "Bad Hersfeld",
-  "51": "Bad Hersfeld",
-  "52": "Bad Hersfeld",
-  "55": "Bad Hersfeld",
-  "30": "Kassel",
-  "36": "Einbeck",
-  "46": "Homberg",
-  "49": "Schwalmstadt",
-  "50": "Melsungen",
-  "53": "Einbeck",
-  "54": "Eschwege",
-  "56": "Homberg",
-  "57": "Eschwege",
+  "43": "Bad Hersfeld Sauer Zebra 21",
+  "46": "Homberg Sauer",
+  "49": "Schwalmstadt Sauer Wäsche",
+  "50": "Melsungen Intersport",
+  "51": "Bad Hersfeld Intersport",
+  "52": "Bad Hersfeld Bike Werkstatt",
+  "53": "Einbeck Intersport",
+  "54": "Eschwege Intersport",
+  "55": "Bad Hersfeld Bike Store",
+  "57": "Göttingen Intersport",
 };
 
 const ZALANDO_REASONS = [
@@ -64,6 +60,61 @@ let selectedTileIndex = 0;
 let twoEans = false;
 let passReason = "";
 let inputMode = "keyboard";
+let pendingCreateRequests = 0;
+const NEWSLETTER_PDFS = [
+  { order: 1, title: "Bestellungen melden Übersicht", file: "1. Bestellungen_melden_Übersicht.pdf" },
+  { order: 2, title: "EAN vergleichen", file: "2. EAN_vergleichen.pdf" },
+  { order: 3, title: "GLS Retoure finden", file: "3. GLS Retoure finden.pdf" },
+  { order: null, title: "Grundlagen zu M-Board und Zalando", file: "Grundlagen zu M‑Board und Zalando.pdf" },
+  { order: null, title: "Neuer Ablauf Stationärer Umtausch", file: "Neuer_Ablauf_Stationärer_Umtausch.pdf" },
+  { order: null, title: "Neuer Ablauf Zalando und MBoard", file: "Neuer_Ablauf_Zalando_und_MBoard.pdf" },
+  { order: null, title: "Retourenbeleg", file: "Retourenbeleg.pdf" },
+  { order: null, title: "Vorstellung Team Onlineshop", file: "Vorstellung_Team_Onlineshop.pdf" }
+];
+
+const NEWSLETTER_MANIFEST = [
+  "1. EAN_vergleichen.pdf",
+  "2. Artikelversand-Kontrolle.pdf",
+  "3. Verpacken_Versandtüten_Kartons.pdf",
+  "4. Pakete_Verpackungen_Inhalt_prüfen.pdf",
+  "5. Neuer_Ablauf_Stationärer_Umtausch.pdf",
+  "5.1 Retourenbeleg.pdf",
+  "6. Einzelteile suchen.pdf",
+  "7. Neuer_Ablauf_Zalando_und_MBoard.pdf",
+  "8. Zalando_Retouren_bearbeiten.pdf",
+  "9. Wie_verpacke_ich_richtig_.pdf",
+  "10. Schwarz-Weiß_drucken _Abschließen.pdf",
+  "11. Newsletter_Zalando_Leistungsbewertung.pdf",
+  "12. Gutscheine.pdf",
+  "13. Abarbeitung der Online-Shop Bestellungen.pdf",
+  "14. Bestellungen_melden_Übersicht.pdf",
+  "15. Neuigkeiten im M-Board.pdf",
+  "16. Vorstellung_Team_Onlineshop.pdf",
+  "17. Grundlagen zu M‑Board und Zalando.pdf",
+  "18. GLS Retoure finden.pdf"
+];
+
+const NEWSLETTER_MANIFEST_FALLBACK = [
+  "1. EAN_vergleichen.pdf",
+  "2. Artikelversand-Kontrolle.pdf",
+  "3. Verpacken_Versandt\u00fcten_Kartons.pdf",
+  "4. Pakete_Verpackungen_Inhalt_pr\u00fcfen.pdf",
+  "5. Neuer_Ablauf_Station\u00e4rer_Umtausch.pdf",
+  "5.1 Retourenbeleg.pdf",
+  "6. Einzelteile suchen.pdf",
+  "7. Neuer_Ablauf_Zalando_und_MBoard.pdf",
+  "8. Zalando_Retouren_bearbeiten.pdf",
+  "9. Wie_verpacke_ich_richtig_.pdf",
+  "10. Schwarz-Wei\u00df_drucken _Abschlie\u00dfen.pdf",
+  "11. Newsletter_Zalando_Leistungsbewertung.pdf",
+  "12. Gutscheine.pdf",
+  "13. Abarbeitung der Online-Shop Bestellungen.pdf",
+  "14. Bestellungen_melden_\u00dcbersicht.pdf",
+  "15. Neuigkeiten im M-Board.pdf",
+  "16. Vorstellung_Team_Onlineshop.pdf",
+  "17. Grundlagen zu M\u2011Board und Zalando.pdf",
+  "18. GLS Retoure finden.pdf"
+];
 
 const tiles = Array.from(document.querySelectorAll("#tileContainer .tile.clickable"));
 const popup = document.getElementById("customPopup");
@@ -262,24 +313,39 @@ async function sendPlannerTicket(data = {}) {
     payload.reasons = data.reasons;
   }
 
-  const res = await fetch(API_URL, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify(payload)
-  });
-  const resText = await res.text();
-  if (!res.ok) {
-    const isCreate = payload.action === "create";
-    const isSoftFlow500 = res.status >= 500 && /InternalServerError/i.test(resText || "");
-    if (isCreate && isSoftFlow500) {
-      syncCreatedTicketIdsToLocal(payload, resText);
-      console.warn("Flow returned 5xx after create action; suppressing UI error.", res.status, resText);
-      return resText;
-    }
-    throw new Error(`Status ${res.status}: ${resText}`);
+  const isCreateAction = payload.action === "create";
+  if (isCreateAction) {
+    pendingCreateRequests += 1;
+    setSendingIndicatorVisible(true);
+    await waitForUiPaint();
   }
-  syncCreatedTicketIdsToLocal(payload, resText);
-  return resText;
+
+  try {
+    const res = await fetch(API_URL, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload)
+    });
+    const resText = await res.text();
+    if (!res.ok) {
+      const isSoftFlow500 = res.status >= 500 && /InternalServerError/i.test(resText || "");
+      if (isCreateAction && isSoftFlow500) {
+        syncCreatedTicketIdsToLocal(payload, resText);
+        console.warn("Flow returned 5xx after create action; suppressing UI error.", res.status, resText);
+        return resText;
+      }
+      throw new Error(`Status ${res.status}: ${resText}`);
+    }
+    syncCreatedTicketIdsToLocal(payload, resText);
+    return resText;
+  } finally {
+    if (isCreateAction) {
+      pendingCreateRequests = Math.max(0, pendingCreateRequests - 1);
+      if (pendingCreateRequests === 0) {
+        setSendingIndicatorVisible(false);
+      }
+    }
+  }
 }
 
 async function createTicket(payload = {}) {
@@ -297,8 +363,13 @@ async function createTicket(payload = {}) {
   };
 }
 
-function showToast(message) {
+function showToast(message, type = "success") {
   if (!message) return;
+  const text = String(message || "").trim();
+  const normalizedType = type === "error"
+    ? "error"
+    : (/pflicht|bitte.+ausf/i.test(text) ? "error" : "success");
+  const isRequiredToast = /pflichtfeld/i.test(text);
   let holder = document.getElementById("toastHolder");
   if (!holder) {
     holder = document.createElement("div");
@@ -306,12 +377,149 @@ function showToast(message) {
     document.body.appendChild(holder);
   }
   const toast = document.createElement("div");
-  toast.className = "toast-notice";
-  toast.textContent = message;
+  toast.className = `toast-notice ${normalizedType === "error" ? "is-error" : "is-success"}${isRequiredToast ? " is-required" : ""}`;
+  toast.textContent = text;
   holder.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add("is-visible"));
   setTimeout(() => {
     toast.classList.remove("is-visible");
     setTimeout(() => toast.remove(), 250);
   }, 4000);
+}
+
+function getInvalidHighlightTarget(field) {
+  if (!field) return null;
+  if (field.classList?.contains("code-box") || field.classList?.contains("bestellung-box")) return field;
+  if (typeof field.closest === "function") {
+    const wrap = field.closest(".code-box, .bestellung-box, .gutschein-box, .passwort-box");
+    if (wrap) return wrap;
+  }
+  return field.parentElement || field;
+}
+
+function clearInvalidFieldState(field) {
+  if (!field) return;
+  const target = getInvalidHighlightTarget(field);
+  target?.classList?.remove("field-invalid");
+  if (field.classList) field.classList.remove("field-input-invalid");
+}
+
+function maybeClearInvalidFieldState(field) {
+  if (!field) return;
+  const value = typeof field.value === "string" ? field.value.trim() : "";
+  if (!value) return;
+  clearInvalidFieldState(field);
+}
+
+function markInvalidField(field, focus = false) {
+  if (!field) return;
+  const target = getInvalidHighlightTarget(field);
+  if (target?.classList) {
+    target.classList.remove("field-invalid");
+    void target.offsetWidth;
+    target.classList.add("field-invalid");
+  }
+  if (field.classList) field.classList.add("field-input-invalid");
+  if (!field.dataset.invalidBound) {
+    field.dataset.invalidBound = "true";
+    field.addEventListener("input", () => maybeClearInvalidFieldState(field));
+  }
+  if (focus && typeof field.focus === "function") {
+    focusDelayed(field);
+  }
+}
+
+function showRequiredFieldsError(message = "Bitte alle Pflichtfelder ausfüllen.") {
+  showToast(message || "Bitte alle Pflichtfelder ausfüllen.", "error");
+}
+
+function ensureSendingIndicator() {
+  let el = document.getElementById("ticketSendingIndicator");
+  if (el) return el;
+
+  el = document.createElement("div");
+  el.id = "ticketSendingIndicator";
+  el.textContent = "Ticket wird gesendet...";
+  el.style.position = "fixed";
+  el.style.left = "50%";
+  el.style.bottom = "16px";
+  el.style.transform = "translateX(-50%)";
+  el.style.zIndex = "100000";
+  el.style.padding = "8px 14px";
+  el.style.borderRadius = "999px";
+  el.style.border = "1px solid #6a7b6a";
+  el.style.background = "rgba(20, 28, 20, 0.92)";
+  el.style.color = "#f4fff4";
+  el.style.fontSize = "12px";
+  el.style.fontWeight = "700";
+  el.style.letterSpacing = "0.2px";
+  el.style.display = "none";
+  document.body.appendChild(el);
+  return el;
+}
+
+function setSendingIndicatorVisible(visible) {
+  const el = ensureSendingIndicator();
+  if (!el) return;
+  el.style.display = visible ? "block" : "none";
+}
+
+function waitForUiPaint() {
+  return new Promise(resolve => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
+function initSearchClearButtons() {
+  const searchInputs = Array.from(
+    document.querySelectorAll("input[id$='SearchInput'], #ticketSearchInput, #handbuchSearchInput, #handbuchStartSearchInput")
+  );
+
+  searchInputs.forEach(input => {
+    if (!input || input.dataset.clearSetup === "true") return;
+    const host = input.parentElement;
+    if (!host) return;
+
+    input.dataset.clearSetup = "true";
+    host.classList.add("search-clear-host");
+    input.classList.add("search-clear-input");
+
+    const targetId = input.id || `search-${Math.random().toString(36).slice(2)}`;
+    if (!input.id) input.id = targetId;
+
+    let clearBtn = host.querySelector(`.search-clear-btn[data-for="${targetId}"]`);
+    if (!clearBtn) {
+      clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "search-clear-btn";
+      clearBtn.dataset.for = targetId;
+      clearBtn.setAttribute("aria-label", "Suche leeren");
+      clearBtn.setAttribute("title", "Leeren");
+      clearBtn.textContent = "×";
+      host.appendChild(clearBtn);
+    }
+
+    const updateState = () => {
+      const hasValue = (input.value || "").trim().length > 0;
+      clearBtn.classList.toggle("is-visible", hasValue);
+      clearBtn.disabled = !hasValue;
+    };
+
+    input.addEventListener("input", updateState);
+    input.addEventListener("change", updateState);
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      updateState();
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    });
+
+    updateState();
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initSearchClearButtons);
+} else {
+  initSearchClearButtons();
 }

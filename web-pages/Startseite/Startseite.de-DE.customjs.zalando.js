@@ -9,6 +9,32 @@ const eanFields = [
 
 let activeEanCount = 1;
 const opt1Headline = document.querySelector("#containerBestellungOpt1 h2");
+const ZALANDO_BORDER_COLORS = {
+  default: "black",
+  valid: "green",
+  invalid: "#d64545"
+};
+
+function setBoxState(box, state) {
+  if (!box) return;
+  box.classList.remove("field-invalid");
+  if (state === "valid") {
+    box.style.borderColor = ZALANDO_BORDER_COLORS.valid;
+    return;
+  }
+  if (state === "invalid") {
+    box.classList.add("field-invalid");
+    box.style.borderColor = ZALANDO_BORDER_COLORS.invalid;
+    return;
+  }
+  box.style.borderColor = ZALANDO_BORDER_COLORS.default;
+}
+
+function showMissingFieldHint() {
+  if (typeof showToast === "function") {
+    showToast("Bitte alle Pflichtfelder ausfüllen.");
+  }
+}
 
 function updateAddSecondEanPosition() {
   const lastActiveIdx = Math.max(0, activeEanCount - 1);
@@ -27,7 +53,7 @@ function removeEanAt(indexToRemove) {
     eanFields[i].input.value = eanFields[i + 1].input.value;
   }
   eanFields[activeEanCount - 1].input.value = "";
-  eanFields[activeEanCount - 1].box.style.borderColor = "black";
+  setBoxState(eanFields[activeEanCount - 1].box, "default");
 
   activeEanCount -= 1;
   for (let i = 1; i < eanFields.length; i += 1) {
@@ -68,7 +94,7 @@ function resetZalandoStep2() {
   inputs.ean4.value = "";
   [box1, box2, box3, box4].forEach((box, idx) => {
     if (!box) return;
-    box.style.borderColor = "black";
+    setBoxState(box, "default");
     if (idx > 0) box.style.display = "none";
   });
   activeEanCount = 1;
@@ -77,8 +103,13 @@ function resetZalandoStep2() {
 }
 
 zalandoNext.addEventListener("click", () => {
-  if (!inputs.best1.value.trim()) return;
-  box1.style.borderColor = "green";
+  if (!inputs.best1.value.trim()) {
+    setBoxState(box1, "invalid");
+    markInvalidField(inputs.best1);
+    showMissingFieldHint();
+    focusDelayed(inputs.best1);
+    return;
+  }
   showView("step2");
   focusDelayed(inputs.ean1);
 });
@@ -86,7 +117,7 @@ zalandoNext.addEventListener("click", () => {
 inputs.best1.addEventListener("input", () => {
   inputs.best1.value = inputs.best1.value.replace(/\D/g, "");
   const ok = inputs.best1.value.trim();
-  document.getElementById("box1").style.borderColor = ok ? "green" : "black";
+  setBoxState(document.getElementById("box1"), ok ? "valid" : "default");
   zalandoNext.style.color = ok ? "green" : "white";
 });
 
@@ -103,7 +134,7 @@ function updateConfirmState() {
     if (idx >= activeEanCount) return;
     const val = field.input.value.trim();
     const valid = val !== "";
-    field.box.style.borderColor = valid ? "green" : "black";
+    setBoxState(field.box, valid ? "valid" : "default");
     if (!valid) allValid = false;
   });
   confirmBtn.style.color = allValid ? "green" : "white";
@@ -165,10 +196,22 @@ if (buttons.reasonPrev2) {
 
 confirmBtn.addEventListener("click", () => {
   const eans = [];
+  let firstInvalidField = null;
   for (let i = 0; i < activeEanCount; i += 1) {
     const val = eanFields[i].input.value.trim();
-    if (!val) return;
+    if (!val) {
+      setBoxState(eanFields[i].box, "invalid");
+      markInvalidField(eanFields[i].input);
+      if (!firstInvalidField) firstInvalidField = eanFields[i].input;
+      continue;
+    }
+    setBoxState(eanFields[i].box, "valid");
     eans.push(val);
+  }
+  if (firstInvalidField) {
+    showMissingFieldHint();
+    focusDelayed(firstInvalidField);
+    return;
   }
 
   resetZalandoStep2();
@@ -194,22 +237,22 @@ confirmBtn.addEventListener("click", () => {
 
 function resetZalandoFlowCompletely() {
   inputs.best1.value = "";
-  document.getElementById("box1").style.borderColor = "black";
+  setBoxState(document.getElementById("box1"), "default");
   zalandoNext.style.color = "white";
 
   inputs.ean1.value = "";
   inputs.ean2.value = "";
   inputs.ean3.value = "";
   inputs.ean4.value = "";
-  box1.style.borderColor = "black";
-  box2.style.borderColor = "black";
+  setBoxState(box1, "default");
+  setBoxState(box2, "default");
   box2.style.display = "none";
   if (box3) {
-    box3.style.borderColor = "black";
+    setBoxState(box3, "default");
     box3.style.display = "none";
   }
   if (box4) {
-    box4.style.borderColor = "black";
+    setBoxState(box4, "default");
     box4.style.display = "none";
   }
 
@@ -233,10 +276,48 @@ function resetZalandoFlowCompletely() {
 
 setupEanRemoveButtons();
 
+function setReasonInputMode(container, mode) {
+  if (!container) return;
+  container.dataset.inputMode = mode;
+}
+
 function buildReasonGrid1(grid, reasons, eans) {
+  const eanEntries = eans.map((ean, idx) => ({ key: `slot-${idx}`, label: ean }));
   const assignments = {};
+  let missingAssignment = false;
   let lastFocusedBtn = null;
   let needsRefocus = false;
+  const oldBoard = containers.opt1?.querySelector(".reason-assignment-board-opt1");
+  if (oldBoard) oldBoard.remove();
+  let panel = containers.opt1?.querySelector(".reason-panel-opt1");
+  if (!panel && grid.parentElement) {
+    panel = document.createElement("div");
+    panel.className = "reason-panel reason-panel-opt1";
+    grid.parentElement.insertBefore(panel, grid);
+  }
+  if (panel && grid.parentElement !== panel) {
+    panel.appendChild(grid);
+  }
+
+  const assignmentBoard = document.createElement("div");
+  assignmentBoard.className = "reason-assignment-board reason-assignment-board-opt1";
+  assignmentBoard.dataset.eanCount = String(eanEntries.length);
+
+  const boardTitle = document.createElement("div");
+  boardTitle.className = "reason-assignment-title";
+  boardTitle.textContent = "Zuordnung";
+
+  const boardList = document.createElement("div");
+  boardList.className = "reason-assignment-list";
+  boardList.dataset.eanCount = String(eanEntries.length);
+
+  assignmentBoard.appendChild(boardTitle);
+  assignmentBoard.appendChild(boardList);
+  if (panel) {
+    panel.appendChild(assignmentBoard);
+  } else if (grid.parentElement) {
+    grid.parentElement.insertBefore(assignmentBoard, grid);
+  }
 
   function ensureReasonFocus() {
     if (document.hidden) return;
@@ -251,6 +332,7 @@ function buildReasonGrid1(grid, reasons, eans) {
         } catch (err) {
           // ignore focus errors (e.g. when window focus is still settling)
         }
+        setReasonInputMode(containers.opt1, "keyboard");
         setKeyboardSelected(target);
       });
     }
@@ -360,73 +442,118 @@ function buildReasonGrid1(grid, reasons, eans) {
   document.addEventListener("keydown", onDocumentKeyDown);
 
   function isAssigned() {
-    return assignments.hasOwnProperty(eans[0]);
+    return Boolean(eanEntries[0] && assignments[eanEntries[0].key]);
+  }
+
+  function animateReasonToSlot(fromBtn, toSlot, reasonText) {
+    if (!fromBtn || !toSlot || !reasonText) return;
+    const fromRect = fromBtn.getBoundingClientRect();
+    const toRect = toSlot.getBoundingClientRect();
+    if (!fromRect.width || !fromRect.height || !toRect.width || !toRect.height) return;
+
+    const chip = document.createElement("div");
+    chip.className = "reason-fly-chip";
+    chip.textContent = reasonText;
+    chip.style.left = `${fromRect.left}px`;
+    chip.style.top = `${fromRect.top}px`;
+    chip.style.width = `${fromRect.width}px`;
+    chip.style.height = `${Math.min(44, fromRect.height)}px`;
+    document.body.appendChild(chip);
+    requestAnimationFrame(() => {
+      chip.style.transform = `translate(${toRect.left - fromRect.left}px, ${toRect.top - fromRect.top}px) scale(0.86)`;
+      chip.style.opacity = "0.15";
+    });
+    chip.addEventListener("transitionend", () => chip.remove(), { once: true });
+    setTimeout(() => chip.remove(), 380);
+  }
+
+  function flashReasonSelection(btn) {
+    if (!btn) return;
+    btn.classList.remove("selected-flash");
+    if (btn._flashTimeout) {
+      clearTimeout(btn._flashTimeout);
+    }
+    void btn.offsetWidth;
+    btn.classList.add("selected-flash");
+    btn._flashTimeout = setTimeout(() => {
+      btn.classList.remove("selected-flash");
+      btn._flashTimeout = null;
+    }, 900);
+  }
+
+  function renderAssignmentBoard() {
+    boardList.innerHTML = "";
+    eanEntries.slice(0, 1).forEach((entry, index) => {
+      const slot = document.createElement("div");
+      slot.className = "reason-assignment-slot";
+      slot.dataset.slotKey = entry.key;
+
+      const slotHeader = document.createElement("div");
+      slotHeader.className = "reason-assignment-slot-head";
+
+      const slotLabel = document.createElement("span");
+      slotLabel.className = "reason-assignment-slot-label";
+      slotLabel.textContent = `EAN ${index + 1}`;
+
+      const slotEan = document.createElement("span");
+      slotEan.className = "reason-assignment-slot-ean";
+      slotEan.textContent = entry.label;
+
+      slotHeader.appendChild(slotLabel);
+      slotHeader.appendChild(slotEan);
+      slot.appendChild(slotHeader);
+
+      const assignedReason = assignments[entry.key];
+      const slotValue = document.createElement("div");
+      slotValue.className = "reason-assignment-slot-value";
+      slotValue.textContent = assignedReason || "Noch kein Grund ausgewählt";
+      slot.appendChild(slotValue);
+
+      if (!assignedReason && missingAssignment) {
+        slot.classList.add("is-missing");
+      }
+
+      if (assignedReason) {
+        slot.classList.add("is-filled");
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "reason-assignment-remove";
+        removeBtn.setAttribute("aria-label", `Zuordnung für EAN ${index + 1} entfernen`);
+        removeBtn.textContent = "×";
+        removeBtn.addEventListener("click", e => {
+          e.preventDefault();
+          e.stopPropagation();
+          delete assignments[entry.key];
+          updateUI();
+        });
+        slot.appendChild(removeBtn);
+      }
+
+      boardList.appendChild(slot);
+    });
   }
 
   function updateUI() {
     Array.from(grid.children).forEach(btn => {
-      btn.classList.remove("selected", "keyboard-selected");
-      btn.querySelector(".ean-tags")?.remove();
-      btn.querySelector(".remove-tag")?.remove();
+      btn.classList.remove("selected");
     });
+    renderAssignmentBoard();
 
     if (isAssigned()) {
-      const currentEAN = eans[0];
-      const currentReason = assignments[currentEAN];
-      const btn = Array.from(grid.children)
-        .find(b => b.textContent.trim() === currentReason);
-      if (btn) {
-        btn.classList.add("selected");
-        const tagBox = document.createElement("div");
-        tagBox.className = "ean-tags";
-        tagBox.style.cssText = `
-          margin-top: 4px;
-          font-size: 12px;
-          color: white;
-          background-color: rgba(0, 150, 0, 0.7);
-          border-radius: 4px;
-          padding: 2px 4px;
-          text-align: center;
-        `;
-        const idx = eans.indexOf(currentEAN);
-        const label = idx >= 0 ? `${idx + 1}. ${currentEAN}` : currentEAN;
-        tagBox.innerHTML = `<div>${label}</div>`;
-        btn.appendChild(tagBox);
-        const removeBtn = document.createElement("span");
-        removeBtn.className = "remove-tag";
-        removeBtn.innerHTML = "&times;";
-        removeBtn.style.cssText = `
-          position: absolute;
-          top: 4px;
-          right: 6px;
-          color: white;
-          cursor: pointer;
-          user-select: none;
-          text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-        `;
-        removeBtn.addEventListener("click", e => {
-          e.stopPropagation();
-          delete assignments[currentEAN];
-          updateUI();
-        });
-        btn.appendChild(removeBtn);
-      }
-    }
-
-    if (isAssigned()) {
+      missingAssignment = false;
       buttons.confirmReason.disabled = false;
       buttons.confirmReason.style.color = "#4caf50";
       buttons.confirmReason.style.cursor = "pointer";
       buttons.confirmReason.focus();
     } else {
-      buttons.confirmReason.disabled = true;
+      buttons.confirmReason.disabled = false;
       buttons.confirmReason.style.color = "white";
       buttons.confirmReason.style.cursor = "not-allowed";
     }
   }
 
   grid.innerHTML = "";
-  buttons.confirmReason.disabled = true;
+  buttons.confirmReason.disabled = false;
   buttons.confirmReason.style.display = "inline-flex";
   buttons.confirmReason.style.color = "white";
   buttons.confirmReason.style.cursor = "not-allowed";
@@ -434,26 +561,36 @@ function buildReasonGrid1(grid, reasons, eans) {
   reasons.forEach(grund => {
     const btn = document.createElement("button");
     btn.textContent = grund;
+    btn.dataset.reason = grund;
     btn.tabIndex = 0;
-    btn.style.cssText = `
-   
-    `;
+    btn.style.cssText = "";
 
     btn.addEventListener("focus", () => {
+      setReasonInputMode(containers.opt1, "keyboard");
       lastFocusedBtn = btn;
       btn.classList.add("keyboard-selected");
     });
     btn.addEventListener("blur", () => btn.classList.remove("keyboard-selected"));
+    btn.addEventListener("pointerenter", () => {
+      setReasonInputMode(containers.opt1, "mouse");
+    });
 
     btn.addEventListener("click", () => {
-      const currentEAN = eans[0];
+      setReasonInputMode(containers.opt1, "mouse");
+      const currentSlot = eanEntries[0];
+      if (!currentSlot) return;
       if (!isAssigned()) {
-        assignments[currentEAN] = grund;
+        const targetSlot = boardList.querySelector(`[data-slot-key="${currentSlot.key}"]`);
+        animateReasonToSlot(btn, targetSlot, grund);
+        flashReasonSelection(btn);
+        assignments[currentSlot.key] = grund;
+        missingAssignment = false;
         updateUI();
       }
     });
 
     btn.addEventListener("keydown", e => {
+      setReasonInputMode(containers.opt1, "keyboard");
       const btns = Array.from(grid.querySelectorAll("button"));
       const index = btns.indexOf(btn);
       if (e.key === "ArrowRight") {
@@ -473,10 +610,16 @@ function buildReasonGrid1(grid, reasons, eans) {
     grid.appendChild(btn);
   });
 
+  renderAssignmentBoard();
   buttons.confirmReason.onclick = () => {
-    const eanList = Object.keys(assignments);
-    if (!eanList.length) return;
-    const reasonList = eanList.map(ean => assignments[ean]);
+    const eanList = eanEntries.filter(entry => assignments[entry.key]).map(entry => entry.label);
+    if (!eanList.length) {
+      missingAssignment = true;
+      updateUI();
+      showToast("Bitte für jede EAN einen Grund auswählen.", "error");
+      return;
+    }
+    const reasonList = eanEntries.filter(entry => assignments[entry.key]).map(entry => assignments[entry.key]);
 
     sendZalandoTicket({
       kachelname: currentTileName,
@@ -516,8 +659,40 @@ function buildReasonGrid2(grid, reasons, eans) {
   // allow duplicate EAN values by tracking via index keys
   const eanEntries = eans.map((ean, idx) => ({ key: `slot-${idx}`, label: ean }));
   const assignments = {}; // key -> grund
+  const missingSlotKeys = new Set();
   let lastFocusedBtn = null;
   let needsRefocus = false;
+  const oldBoard = containers.opt2?.querySelector(".reason-assignment-board-opt2");
+  if (oldBoard) oldBoard.remove();
+  let panel = containers.opt2?.querySelector(".reason-panel-opt2");
+  if (!panel && grid.parentElement) {
+    panel = document.createElement("div");
+    panel.className = "reason-panel reason-panel-opt2";
+    grid.parentElement.insertBefore(panel, grid);
+  }
+  if (panel && grid.parentElement !== panel) {
+    panel.appendChild(grid);
+  }
+
+  const assignmentBoard = document.createElement("div");
+  assignmentBoard.className = "reason-assignment-board reason-assignment-board-opt2";
+  assignmentBoard.dataset.eanCount = String(eanEntries.length);
+
+  const boardTitle = document.createElement("div");
+  boardTitle.className = "reason-assignment-title";
+  boardTitle.textContent = "Zuordnung";
+
+  const boardList = document.createElement("div");
+  boardList.className = "reason-assignment-list";
+  boardList.dataset.eanCount = String(eanEntries.length);
+
+  assignmentBoard.appendChild(boardTitle);
+  assignmentBoard.appendChild(boardList);
+  if (panel) {
+    panel.appendChild(assignmentBoard);
+  } else if (grid.parentElement) {
+    grid.parentElement.insertBefore(assignmentBoard, grid);
+  }
 
   function ensureReasonFocus() {
     if (document.hidden) return;
@@ -532,6 +707,7 @@ function buildReasonGrid2(grid, reasons, eans) {
         } catch (err) {
           // ignore focus errors (e.g. when window focus is still settling)
         }
+        setReasonInputMode(containers.opt2, "keyboard");
         setKeyboardSelected(target);
       });
     }
@@ -646,81 +822,120 @@ function buildReasonGrid2(grid, reasons, eans) {
   function nextFreeSlot() {
     return eanEntries.find(entry => !(entry.key in assignments));
   }
+  function getSlotNode(slotKey) {
+    return boardList.querySelector(`[data-slot-key="${slotKey}"]`);
+  }
+  function flashReasonSelection(btn) {
+    if (!btn) return;
+    btn.classList.remove("selected-flash");
+    if (btn._flashTimeout) {
+      clearTimeout(btn._flashTimeout);
+    }
+    // restart animation cleanly
+    void btn.offsetWidth;
+    btn.classList.add("selected-flash");
+    btn._flashTimeout = setTimeout(() => {
+      btn.classList.remove("selected-flash");
+      btn._flashTimeout = null;
+    }, 920);
+  }
+
+  function animateReasonToSlot(fromBtn, toSlot, reasonText) {
+    if (!fromBtn || !toSlot || !reasonText) return;
+    const fromRect = fromBtn.getBoundingClientRect();
+    const toRect = toSlot.getBoundingClientRect();
+    if (!fromRect.width || !fromRect.height || !toRect.width || !toRect.height) return;
+
+    const chip = document.createElement("div");
+    chip.className = "reason-fly-chip";
+    chip.textContent = reasonText;
+    chip.style.left = `${fromRect.left}px`;
+    chip.style.top = `${fromRect.top}px`;
+    chip.style.width = `${fromRect.width}px`;
+    chip.style.height = `${Math.min(44, fromRect.height)}px`;
+
+    document.body.appendChild(chip);
+    requestAnimationFrame(() => {
+      chip.style.transform = `translate(${toRect.left - fromRect.left}px, ${toRect.top - fromRect.top}px) scale(0.86)`;
+      chip.style.opacity = "0.15";
+    });
+    chip.addEventListener("transitionend", () => chip.remove(), { once: true });
+    setTimeout(() => chip.remove(), 380);
+  }
+
+  function renderAssignmentBoard() {
+    boardList.innerHTML = "";
+    eanEntries.forEach((entry, index) => {
+      const slot = document.createElement("div");
+      slot.className = "reason-assignment-slot";
+      slot.dataset.slotKey = entry.key;
+
+      const slotHeader = document.createElement("div");
+      slotHeader.className = "reason-assignment-slot-head";
+
+      const slotLabel = document.createElement("span");
+      slotLabel.className = "reason-assignment-slot-label";
+      slotLabel.textContent = `EAN ${index + 1}`;
+
+      const slotEan = document.createElement("span");
+      slotEan.className = "reason-assignment-slot-ean";
+      slotEan.textContent = entry.label;
+
+      slotHeader.appendChild(slotLabel);
+      slotHeader.appendChild(slotEan);
+      slot.appendChild(slotHeader);
+
+      const assignedReason = assignments[entry.key];
+      const slotValue = document.createElement("div");
+      slotValue.className = "reason-assignment-slot-value";
+      slotValue.textContent = assignedReason || "Noch kein Grund ausgewählt";
+      slot.appendChild(slotValue);
+
+      if (!assignedReason && missingSlotKeys.has(entry.key)) {
+        slot.classList.add("is-missing");
+      }
+
+      if (assignedReason) {
+        slot.classList.add("is-filled");
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "reason-assignment-remove";
+        removeBtn.setAttribute("aria-label", `Zuordnung für EAN ${index + 1} entfernen`);
+        removeBtn.textContent = "×";
+        removeBtn.addEventListener("click", e => {
+          e.preventDefault();
+          e.stopPropagation();
+          delete assignments[entry.key];
+          updateUI();
+        });
+        slot.appendChild(removeBtn);
+      }
+
+      boardList.appendChild(slot);
+    });
+  }
 
   function updateUI() {
-    const usagePerReason = {};
-    eanEntries.forEach((entry, index) => {
-      const grund = assignments[entry.key];
-      if (!grund) return;
-      if (!usagePerReason[grund]) usagePerReason[grund] = [];
-      usagePerReason[grund].push(`${index + 1}. ${entry.label}`);
-    });
-
     Array.from(grid.children).forEach(btn => {
-      btn.classList.remove("selected", "keyboard-selected");
-      btn.querySelector(".ean-tags")?.remove();
-      btn.querySelector(".remove-tag")?.remove();
+      btn.classList.remove("selected");
     });
-
-    Object.entries(usagePerReason).forEach(([grund, zugewieseneEANs]) => {
-      const btn = Array.from(grid.children).find(b => b.textContent.trim() === grund);
-      if (!btn) return;
-
-      btn.classList.add("selected");
-
-      const tagBox = document.createElement("div");
-      tagBox.className = "ean-tags";
-      tagBox.style.cssText = `
-        margin-top: 4px;
-        font-size: 12px;
-        color: white;
-        background-color: rgba(0, 150, 0, 0.7);
-        border-radius: 4px;
-        padding: 2px 4px;
-        text-align: center;
-      `;
-      tagBox.innerHTML = zugewieseneEANs.map(ean => `<div>${ean}</div>`).join("");
-      btn.appendChild(tagBox);
-
-      const removeBtn = document.createElement("span");
-      removeBtn.className = "remove-tag";
-      removeBtn.innerHTML = "&times;";
-      removeBtn.style.cssText = `
-        position: absolute;
-        top: 4px;
-        right: 6px;
-        font-size: 1rem;
-        color: white;
-        cursor: pointer;
-        user-select: none;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-      `;
-      removeBtn.addEventListener("click", e => {
-        e.stopPropagation();
-        Object.keys(assignments).forEach(key => {
-          if (assignments[key] === grund) {
-            delete assignments[key];
-          }
-        });
-        updateUI();
-      });
-      btn.appendChild(removeBtn);
-    });
+    renderAssignmentBoard();
 
     if (totalAssigned() === eanEntries.length) {
+      missingSlotKeys.clear();
       buttons.confirmReason2.disabled = false;
       buttons.confirmReason2.style.color = "#4caf50";
       buttons.confirmReason2.style.cursor = "pointer";
       buttons.confirmReason2.focus();
     } else {
-      buttons.confirmReason2.disabled = true;
+      buttons.confirmReason2.disabled = false;
       buttons.confirmReason2.style.color = "white";
       buttons.confirmReason2.style.cursor = "not-allowed";
     }
   }
 
   grid.innerHTML = "";
-  buttons.confirmReason2.disabled = true;
+  buttons.confirmReason2.disabled = false;
   buttons.confirmReason2.style.display = "inline-flex";
   buttons.confirmReason2.style.color = "white";
   buttons.confirmReason2.style.cursor = "not-allowed";
@@ -728,36 +943,36 @@ function buildReasonGrid2(grid, reasons, eans) {
   reasons.forEach(grund => {
     const btn = document.createElement("button");
     btn.textContent = grund;
+    btn.dataset.reason = grund;
     btn.tabIndex = 0;
-    btn.style.cssText = `
-      padding: 10px;
-      font-size: 14px;
-      border: 2px solid black;
-      border-radius: 6px;
-      background: #eee;
-      cursor: pointer;
-      outline: none;
-      position: relative;
-      min-height: 60px;
-      transition: transform 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
-    `;
+    btn.style.cssText = "";
 
     btn.addEventListener("focus", () => {
+      setReasonInputMode(containers.opt2, "keyboard");
       lastFocusedBtn = btn;
       btn.classList.add("keyboard-selected");
     });
     btn.addEventListener("blur", () => btn.classList.remove("keyboard-selected"));
+    btn.addEventListener("pointerenter", () => {
+      setReasonInputMode(containers.opt2, "mouse");
+    });
 
     btn.addEventListener("click", () => {
+      setReasonInputMode(containers.opt2, "mouse");
       if (totalAssigned() >= eanEntries.length) return;
       const frei = nextFreeSlot();
       if (frei) {
+        missingSlotKeys.delete(frei.key);
+        const targetSlot = getSlotNode(frei.key);
+        animateReasonToSlot(btn, targetSlot, grund);
+        flashReasonSelection(btn);
         assignments[frei.key] = grund;
         updateUI();
       }
     });
 
     btn.addEventListener("keydown", e => {
+      setReasonInputMode(containers.opt2, "keyboard");
       const btns = Array.from(grid.querySelectorAll("button"));
       const index = btns.indexOf(btn);
       if (e.key === "ArrowRight") {
@@ -778,8 +993,17 @@ function buildReasonGrid2(grid, reasons, eans) {
     grid.appendChild(btn);
   });
 
+  renderAssignmentBoard();
   buttons.confirmReason2.onclick = () => {
-    if (Object.keys(assignments).length < eanEntries.length) return;
+    if (Object.keys(assignments).length < eanEntries.length) {
+      missingSlotKeys.clear();
+      eanEntries.forEach(entry => {
+        if (!assignments[entry.key]) missingSlotKeys.add(entry.key);
+      });
+      updateUI();
+      showToast("Bitte für jede EAN einen Grund auswählen.", "error");
+      return;
+    }
 
     const eanList = eanEntries.map(e => e.label);
     const reasonList = eanEntries.map(e => assignments[e.key]);

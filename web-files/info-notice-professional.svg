@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title desc">
+  <title id="title">Hinweis</title>
+  <desc id="desc">Hinweis-Symbol</desc>
+  <defs>
+    <linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#d95a2a"/>
+      <stop offset="1" stop-color="#b84018"/>
+    </linearGradient>
+  </defs>
+  <circle cx="24" cy="24" r="22" fill="url(#g)"/>
+  <path d="M24 10c-4.2 0-7.6 3.4-7.6 7.6 0 2.1.9 4.1 2.4 5.5l3.3 3.2v4.7a2 2 0 1 0 4 0v-4.7l3.3-3.2a7.6 7.6 0 0 0 2.4-5.5c0-4.2-3.4-7.6-7.8-7.6Z" fill="#fff"/>
+  <rect x="18.5" y="34" width="11" height="4" rx="2" fill="#ffe8de"/>
+</svg>

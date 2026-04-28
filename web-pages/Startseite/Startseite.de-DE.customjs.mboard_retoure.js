@@ -34,7 +34,29 @@ if (buttons.mboardRetoureConfirm) {
     const ean = inputs.mboardEAN.value.trim();
     const customer = inputs.mboardCustomer.value.trim();
     const state = inputs.mboardState.value.trim();
-    if (!(order && ean && customer && state) || hasSent) return;
+    let firstInvalid = null;
+    if (!order) {
+      markInvalidField(inputs.mboardOrder);
+      firstInvalid = firstInvalid || inputs.mboardOrder;
+    }
+    if (!ean) {
+      markInvalidField(inputs.mboardEAN);
+      firstInvalid = firstInvalid || inputs.mboardEAN;
+    }
+    if (!customer) {
+      markInvalidField(inputs.mboardCustomer);
+      firstInvalid = firstInvalid || inputs.mboardCustomer;
+    }
+    if (!state) {
+      markInvalidField(inputs.mboardState);
+      firstInvalid = firstInvalid || inputs.mboardState;
+    }
+    if (firstInvalid) {
+      showRequiredFieldsError();
+      focusDelayed(firstInvalid);
+      return;
+    }
+    if (hasSent) return;
 
     hasSent = true;
     const detailText = `Bestellnummer: ${order} | EAN: ${ean} | Kundenname: ${customer} | Zustand: ${state}`;

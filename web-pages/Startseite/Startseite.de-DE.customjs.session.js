@@ -5,6 +5,27 @@ const VALID_FILIAL_NUMBERS = [
   "51", "52", "53", "54", "55", "57", "58"
 ];
 const VALID_FILIAL_SET = new Set(VALID_FILIAL_NUMBERS);
+const SAVE_LABEL_DEFAULT = "Bestätigen";
+const SAVE_LABEL_CONFIRMED = "Bestätigt";
+
+function setSaveButtonConfirmed(isConfirmed) {
+  if (!buttons.save) return;
+  buttons.save.classList.toggle("is-confirmed", !!isConfirmed);
+  buttons.save.textContent = isConfirmed ? SAVE_LABEL_CONFIRMED : SAVE_LABEL_DEFAULT;
+}
+
+function hasConfirmedSessionData() {
+  const savedPers = (localStorage.getItem(SESSION_KEYS.persNr) || "").trim();
+  const savedFil = (localStorage.getItem(SESSION_KEYS.filNr) || "").trim();
+  const expRaw = localStorage.getItem(SESSION_KEYS.expiresAt);
+  const currentPers = (inputs.persNr.value || "").trim();
+  const currentFil = (inputs.filNr.value || "").trim();
+  if (!savedPers || !savedFil || !expRaw) return false;
+  const expiresAt = new Date(expRaw);
+  if (!(expiresAt instanceof Date) || Number.isNaN(expiresAt.getTime())) return false;
+  if (expiresAt <= new Date()) return false;
+  return savedPers === currentPers && savedFil === currentFil;
+}
 
 function isValidFilialNumber(value) {
   return VALID_FILIAL_SET.has(String(value || "").trim());
@@ -20,6 +41,8 @@ function updateFilialInputState() {
 
 function expireSession() {
   [SESSION_KEYS.persNr, SESSION_KEYS.filNr, SESSION_KEYS.expiresAt].forEach(k => localStorage.removeItem(k));
+  setSaveButtonConfirmed(false);
+  if (buttons.save) buttons.save.disabled = true;
   disableAllTiles();
   alert("Deine Session ist abgelaufen. Bitte Personal- und Filialnummer erneut eingeben.");
 }
@@ -48,7 +71,9 @@ function validatePersonalFilial() {
     ? `Ungültige Filialnummer. Erlaubt: ${VALID_FILIAL_NUMBERS.join(", ")}`
     : "";
 
-  buttons.save.disabled = !canSave;
+  const isConfirmed = canSave && hasConfirmedSessionData();
+  buttons.save.disabled = isConfirmed ? true : !canSave;
+  setSaveButtonConfirmed(isConfirmed);
   if (buttons.reset) {
     buttons.reset.classList.toggle("is-ready", canSave);
   }
@@ -97,14 +122,14 @@ inputs.filNr.addEventListener("keydown", e => {
 
 buttons.save.addEventListener("click", () => {
   if (!(inputs.persNr.value.trim() && inputs.filNr.value.trim())) {
-    [inputs.persNr, inputs.filNr].forEach(i => {
-      if (!i.value.trim()) i.style.border = "2px solid red";
-    });
+    if (!inputs.persNr.value.trim()) markInvalidField(inputs.persNr, true);
+    if (!inputs.filNr.value.trim()) markInvalidField(inputs.filNr, !inputs.persNr.value.trim());
+    showRequiredFieldsError();
     return;
   }
   if (!isValidFilialNumber(inputs.filNr.value)) {
-    inputs.filNr.style.border = "2px solid red";
-    alert(`Ungültige Filialnummer.\nErlaubte Werte: ${VALID_FILIAL_NUMBERS.join(", ")}`);
+    markInvalidField(inputs.filNr, true);
+    showToast(`Ungültige Filialnummer. Erlaubt: ${VALID_FILIAL_NUMBERS.join(", ")}`, "error");
     return;
   }
   localStorage.setItem(SESSION_KEYS.persNr, inputs.persNr.value.trim());
@@ -121,8 +146,15 @@ buttons.save.addEventListener("click", () => {
     const openCount = loadTickets().filter(t => !t.done).length;
     updateTicketsTabLabel(openCount);
   }
-  document.getElementById("savedNotice").style.display = "block";
-  setTimeout(() => document.getElementById("savedNotice").style.display = "none", 4000);
+  const legacySavedNotice = document.getElementById("savedNotice");
+  if (legacySavedNotice) {
+    legacySavedNotice.style.display = "none";
+  }
+  if (typeof showToast === "function") {
+    showToast("Personalnummer und Filialnummer korrekt hinterlegt.", "success");
+  }
+  setSaveButtonConfirmed(true);
+  buttons.save.disabled = true;
   showView("tile");
 });
 
@@ -134,6 +166,7 @@ if (buttons.reset) {
     });
     [SESSION_KEYS.persNr, SESSION_KEYS.filNr, SESSION_KEYS.expiresAt].forEach(k => localStorage.removeItem(k));
     updateFilialPlaceholder();
+    setSaveButtonConfirmed(false);
     validatePersonalFilial();
     disableAllTiles();
     if (buttons.ticketsTab) buttons.ticketsTab.disabled = true;
