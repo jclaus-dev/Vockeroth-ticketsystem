@@ -1,7 +1,7 @@
 /* Startseite: Sonstiges flow */
 
 inputs.sonstiges.addEventListener("input", () => {
-  setConfirmButtonReady(buttons.sonstConfirm, Boolean(inputs.sonstiges.value.trim()));
+  buttons.sonstConfirm.style.color = inputs.sonstiges.value.trim() ? "green" : "white";
 });
 
 inputs.sonstiges.addEventListener("keydown", e => {
@@ -23,12 +23,7 @@ buttons.sonstConfirm.addEventListener("keydown", e => {
 buttons.sonstConfirm.addEventListener("click", async e => {
   e.preventDefault();
   const text = inputs.sonstiges.value.trim();
-  if (!text) {
-    markInvalidField(inputs.sonstiges, true);
-    showRequiredFieldsError();
-    return;
-  }
-  if (hasSent) return;
+  if (!text || hasSent) return;
 
   hasSent = true;
   if (typeof recordTicket === "function") {
@@ -45,7 +40,7 @@ buttons.sonstConfirm.addEventListener("click", async e => {
       text
     });
     inputs.sonstiges.value = "";
-    setConfirmButtonReady(buttons.sonstConfirm, false);
+    buttons.sonstConfirm.style.color = "white";
     showToast("Ticket für Sonstiges Anliegen wurde erfolgreich erstellt.");
     showView("tile");
   } catch (err) {

@@ -6,112 +6,10 @@ function hideAllViews() {
   });
 }
 
-function setConfirmButtonReady(button, isReady) {
-  if (!button) return;
-  const ready = Boolean(isReady);
-  button.style.color = ready ? "green" : "white";
-  button.classList.toggle("is-ready", ready);
-}
-
-const GENERIC_FLOW_PROGRESS = {
-  gutschein: {
-    containerKey: "gutschein",
-    total: 1,
-    current: 1,
-    labels: ["Ticketdaten"],
-    status: "Ein Schritt"
-  },
-  pass1: {
-    containerKey: "pass1",
-    total: 1,
-    current: 1,
-    labels: ["Grund auswählen"],
-    status: "Direktversand"
-  },
-  pass2: {
-    containerKey: "pass2",
-    total: 2,
-    current: 2,
-    labels: ["Grund", "Details & Abschicken"],
-    status: "Letzter Schritt"
-  },
-  sonstiges: {
-    containerKey: "sonstiges",
-    total: 1,
-    current: 1,
-    labels: ["Anliegen"],
-    status: "Ein Schritt"
-  },
-  mboard: {
-    containerKey: "mboard",
-    total: 1,
-    current: 1,
-    labels: ["Problem"],
-    status: "Ein Schritt"
-  },
-  mboardRetoure: {
-    containerKey: "mboardRetoure",
-    total: 1,
-    current: 1,
-    labels: ["Retoure-Daten"],
-    status: "Ein Schritt"
-  }
-};
-
-function ensureGenericFlowProgress(container) {
-  if (!container) return null;
-  let el = container.querySelector(".flow-progress");
-  if (el) return el;
-  el = document.createElement("div");
-  el.className = "flow-progress";
-  container.insertAdjacentElement("afterbegin", el);
-  return el;
-}
-
-function renderGenericFlowProgress(container, cfg) {
-  const progress = ensureGenericFlowProgress(container);
-  if (!progress || !cfg) return;
-  progress.style.setProperty("--flow-progress-cols", String(Math.max(1, cfg.total)));
-  const pills = cfg.labels.map((label, idx) => {
-    const stepNumber = idx + 1;
-    const classes = [
-      "flow-progress-step",
-      stepNumber < cfg.current ? "is-done" : "",
-      stepNumber === cfg.current ? "is-active" : ""
-    ].filter(Boolean).join(" ");
-    return `<span class="${classes}">${stepNumber}. ${label}</span>`;
-  }).join("");
-
-  progress.innerHTML = `
-    <div class="flow-progress-inner">
-      <div class="flow-progress-meta">
-        <span class="flow-progress-stepcount">Schritt ${cfg.current} von ${cfg.total}</span>
-        <span class="flow-progress-status">${cfg.status}</span>
-      </div>
-      <div class="flow-progress-steps">${pills}</div>
-    </div>
-  `;
-  progress.style.display = "block";
-}
-
-function updateGenericFlowProgressByView(viewName) {
-  Object.values(GENERIC_FLOW_PROGRESS).forEach(cfg => {
-    const container = containers[cfg.containerKey];
-    const el = container?.querySelector(".flow-progress");
-    if (el) el.style.display = "none";
-  });
-
-  const cfg = GENERIC_FLOW_PROGRESS[viewName];
-  if (!cfg) return;
-  const container = containers[cfg.containerKey];
-  if (!container) return;
-  renderGenericFlowProgress(container, cfg);
-}
-
 function updateTileSelection() {
+  const allowHighlight = !buttons.save.disabled;
   tiles.forEach((tileEl, idx) => {
-    const isSelectableTile = !tileEl.classList.contains("disabled") && tileEl.dataset.kachelname !== "Coming Soon";
-    const isSelected = isSelectableTile && idx === selectedTileIndex && inputMode === "keyboard";
+    const isSelected = allowHighlight && idx === selectedTileIndex && inputMode === "keyboard";
     if (isSelected) {
       tileEl.classList.add("keyboard-selected");
       tileEl.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -123,68 +21,13 @@ function updateTileSelection() {
   localStorage.setItem(SESSION_KEYS.lastTileIndex, selectedTileIndex);
 }
 
-function clearFlowInputsForHome() {
-  const keepIds = new Set([
-    "personalnummer",
-    "filialnummer",
-    "ticketSearchInput",
-    "handbuchSearchInput",
-    "handbuchStartSearchInput"
-  ]);
-
-  const resetScopes = [
-    containers.gutschein,
-    containers.best1,
-    containers.step2,
-    containers.opt1,
-    containers.opt2,
-    containers.pass1,
-    containers.pass2,
-    containers.sonstiges,
-    containers.mboard,
-    containers.mboardRetoure
-  ].filter(Boolean);
-
-  resetScopes.forEach(scope => {
-    scope.querySelectorAll("input, textarea").forEach(field => {
-      if (!field || keepIds.has(field.id)) return;
-      field.value = "";
-      field.classList?.remove("field-input-invalid");
-      if (typeof clearInvalidFieldState === "function") {
-        clearInvalidFieldState(field);
-      }
-    });
-  });
-
-  document.querySelectorAll(".field-invalid").forEach(el => el.classList.remove("field-invalid"));
-
-  if (typeof resetGutscheinForm === "function") resetGutscheinForm();
-  if (typeof resetZalandoFlowCompletely === "function") resetZalandoFlowCompletely();
-  if (typeof preparePasswortStep1 === "function") preparePasswortStep1();
-
-  if (buttons?.sonstConfirm) setConfirmButtonReady(buttons.sonstConfirm, false);
-  if (buttons?.mboardConfirm) setConfirmButtonReady(buttons.mboardConfirm, false);
-  if (buttons?.passConfirm) setConfirmButtonReady(buttons.passConfirm, false);
-  if (typeof zalandoNext !== "undefined" && zalandoNext) setConfirmButtonReady(zalandoNext, false);
-  if (typeof confirmBtn !== "undefined" && confirmBtn) setConfirmButtonReady(confirmBtn, false);
-  if (buttons?.confirmReason) setConfirmButtonReady(buttons.confirmReason, false);
-  if (buttons?.confirmReason2) setConfirmButtonReady(buttons.confirmReason2, false);
-  if (buttons?.mboardRetoureConfirm) setConfirmButtonReady(buttons.mboardRetoureConfirm, false);
-}
-
 function showView(name) {
   hideAllViews();
 
   document.body.classList.toggle("home-view", name === "tile");
   document.body.classList.toggle("tickets-view", name === "tickets");
-  const isTopBarView = name === "tile" || name === "tickets" || name === "handbuch" || name === "handbuchDetail" || name === "handbuchArticle";
-  document.body.classList.toggle("flow-view", !isTopBarView);
 
   if (containers[name]) containers[name].style.display = "flex";
-  if (typeof updateZalandoProgressByView === "function") {
-    updateZalandoProgressByView(name);
-  }
-  updateGenericFlowProgressByView(name);
 
   if (buttons.homeTab && buttons.ticketsTab) {
     const isHome = name === "tile";
@@ -197,12 +40,11 @@ function showView(name) {
     }
   }
 
-  if (isTopBarView) {
+  if (name === "tile" || name === "tickets" || name === "handbuch" || name === "handbuchDetail" || name === "handbuchArticle") {
     if (userFieldsWrapper) userFieldsWrapper.style.display = "flex";
     if (userFields) userFields.style.display = name === "tile" ? "flex" : "none";
 
     if (name === "tile") {
-      clearFlowInputsForHome();
       if (!inputs.persNr.value.trim()) {
         inputs.persNr.focus();
       } else if (!inputs.filNr.value.trim()) {
@@ -639,13 +481,17 @@ function enableAllTiles() {
 function updateFilialPlaceholder() {
   const nr = inputs.filNr.value.trim();
   const name = FILIAL_MAP[nr] || "unbekannt";
-  navFilialPlaceholder.textContent = `${name}`;
+  navFilialPlaceholder.textContent = `Standort ${name}`;
 }
 
-const WAITING_PLACEHOLDER_TEXT = "Warte auf Eingabe";
-const waitingPlaceholderTimers = new WeakMap();
+let activeCodeBoxBlinkTimer = null;
 
 function stopActiveCodeBoxBlink() {
+  if (activeCodeBoxBlinkTimer) {
+    clearInterval(activeCodeBoxBlinkTimer);
+    activeCodeBoxBlinkTimer = null;
+  }
+
   document.querySelectorAll(".code-box.code-box-active, .code-box.code-box-active-dashed").forEach(box => {
     box.classList.remove("code-box-active", "code-box-active-dashed");
     box.style.borderStyle = "solid";
@@ -658,6 +504,11 @@ function startActiveCodeBoxBlink(box) {
   stopActiveCodeBoxBlink();
   box.classList.add("code-box-active");
   box.style.borderStyle = "solid";
+
+  activeCodeBoxBlinkTimer = setInterval(() => {
+    const dashed = box.classList.toggle("code-box-active-dashed");
+    box.style.borderStyle = dashed ? "dashed" : "solid";
+  }, 420);
 }
 
 function clearActiveCodeBoxState() {
@@ -685,40 +536,6 @@ function setCodeBoxActiveState(input, isActive) {
   }
 }
 
-function stopWaitingPlaceholderBlink(input) {
-  if (!input) return;
-  const timer = waitingPlaceholderTimers.get(input);
-  if (timer) {
-    clearInterval(timer);
-    waitingPlaceholderTimers.delete(input);
-  }
-  input.dataset.waitingPlaceholderVisible = "false";
-}
-
-function startWaitingPlaceholderBlink(input) {
-  if (!input || waitingPlaceholderTimers.has(input)) return;
-  input.dataset.waitingPlaceholderVisible = "true";
-
-  const timer = setInterval(() => {
-    if (!document.body.contains(input)) {
-      stopWaitingPlaceholderBlink(input);
-      return;
-    }
-    const keepPlaceholder = input.dataset.keepPlaceholder === "true";
-    const isFocused = document.activeElement === input;
-    const isEmpty = input.value.trim() === "";
-    if (keepPlaceholder || !isFocused || !isEmpty) {
-      stopWaitingPlaceholderBlink(input);
-      return;
-    }
-    const visible = input.dataset.waitingPlaceholderVisible === "true";
-    input.dataset.waitingPlaceholderVisible = visible ? "false" : "true";
-    input.placeholder = visible ? "" : WAITING_PLACEHOLDER_TEXT;
-  }, 520);
-
-  waitingPlaceholderTimers.set(input, timer);
-}
-
 function syncInputPlaceholderState(input) {
   if (!input) return;
 
@@ -729,15 +546,7 @@ function syncInputPlaceholderState(input) {
   const shouldShowWaiting = !keepPlaceholder && isFocused && isEmpty;
 
   input.classList.toggle("blink-placeholder", shouldShowWaiting);
-  if (shouldShowWaiting) {
-    if (input.dataset.waitingPlaceholderVisible !== "false") {
-      input.placeholder = WAITING_PLACEHOLDER_TEXT;
-    }
-    startWaitingPlaceholderBlink(input);
-  } else {
-    stopWaitingPlaceholderBlink(input);
-    input.placeholder = defaultPlaceholder;
-  }
+  input.placeholder = shouldShowWaiting ? "Warte auf Eingabe..." : defaultPlaceholder;
   setCodeBoxActiveState(input, isFocused);
 }
 
@@ -756,7 +565,6 @@ function setupBlinkingPlaceholder(input) {
   });
 
   input.addEventListener("blur", () => {
-    stopWaitingPlaceholderBlink(input);
     if (input.value.trim() === "") {
       syncInputPlaceholderState(input);
       if (input.dataset.allowEmpty === "true") return;
@@ -795,21 +603,3 @@ function setupCodeBoxClickFocus() {
 }
 
 setupCodeBoxClickFocus();
-
-function initKeyboardShortcutsHint() {
-  if (document.getElementById("keyboardShortcutsHint")) return;
-  const wrap = document.createElement("div");
-  wrap.id = "keyboardShortcutsHint";
-  wrap.className = "keyboard-shortcuts-hint";
-  wrap.innerHTML = `
-    <div class="keyboard-shortcuts-subtle">Probier mal die Tastatursteurung aus.</div>
-    <div class="keyboard-shortcuts-title">Shortcuts</div>
-    <div class="keyboard-shortcuts-items">
-      <span><kbd>Enter</kbd> bestätigen</span>
-      <span><kbd>←</kbd> <kbd>→</kbd> Navigation</span>
-    </div>
-  `;
-  document.body.appendChild(wrap);
-}
-
-

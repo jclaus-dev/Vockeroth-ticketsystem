@@ -49,6 +49,15 @@ document.addEventListener("keydown", e => {
     return;
   }
 
+  if (
+    getComputedStyle(containers.tile).display === "flex" &&
+    buttons.save.disabled &&
+    (/Arrow(Right|Left)/.test(e.key) || e.key === "Enter")
+  ) {
+    setInputMode("keyboard");
+    return;
+  }
+
   if (getComputedStyle(containers.tile).display !== "none") {
     if (/Arrow(Right|Left)/.test(e.key)) {
       setInputMode("keyboard");
@@ -118,7 +127,6 @@ function selectTile(i, name) {
 
     case "Zalando Passwort zur\u00fccksetzen":
       showView("pass1");
-      if (typeof preparePasswortStep1 === "function") preparePasswortStep1();
       focusFirstPasswortReason();
       break;
 
