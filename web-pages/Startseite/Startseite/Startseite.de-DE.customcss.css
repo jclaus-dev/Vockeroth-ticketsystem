@@ -169,12 +169,61 @@ html, body {
   border: none;
   border-radius: 50%;
   background: #d93025;
-  color: #fff;
-  font-size: 14px;
-  line-height: 18px;
-  text-align: center;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  display: block;
   padding: 0;
   cursor: pointer;
+}
+
+.ean-remove-btn::before,
+.ean-remove-btn::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 2px;
+  border-radius: 999px;
+  background: #fff;
+  transform-origin: center;
+}
+
+.ean-remove-btn::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.ean-remove-btn::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+.mboard-retoure-ean-box {
+  position: relative;
+}
+
+.mboard-retoure-add-ean {
+  color: #fff;
+  background: transparent;
+  transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.mboard-retoure-add-ean:hover,
+.mboard-retoure-add-ean:focus {
+  border-color: #fff !important;
+  background: transparent;
+  outline: none;
+  transform: scale(1.03);
+}
+
+.mboard-retoure-ean-box .ean-remove-btn {
+  top: 8px;
+  right: 8px;
+}
+
+@media (max-width: 520px) {
+  #containerMboardRetoure .code-box {
+    max-width: calc(100vw - 32px);
+  }
 }
 .gutschein-buttons {
   display: flex;

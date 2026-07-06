@@ -127,7 +127,6 @@ function selectTile(i, name) {
 
     case "Zalando Passwort zur\u00fccksetzen":
       showView("pass1");
-      if (typeof preparePasswortStep1 === "function") preparePasswortStep1();
       focusFirstPasswortReason();
       break;
 
