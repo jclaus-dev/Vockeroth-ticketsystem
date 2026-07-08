@@ -1,138 +1,100 @@
 /* Startseite: M-Board Retoure flow */
 
-const mboardRetoureEanBoxes = Array.from(document.querySelectorAll(".mboard-retoure-ean-box"));
-const mboardRetoureEanInputs = Array.from(document.querySelectorAll(".mboard-retoure-ean-input"));
-const mboardRetoureAddEAN = document.getElementById("mboardRetoureAddEAN");
-let activeMboardRetoureEanCount = 1;
+const mboardRetoureEanFields = [
+  { input: inputs.mboardEAN, box: inputs.mboardEAN?.parentElement },
+  { input: inputs.mboardEAN2, box: document.getElementById("mboardRetoureEAN2Box") },
+  { input: inputs.mboardEAN3, box: document.getElementById("mboardRetoureEAN3Box") },
+  { input: inputs.mboardEAN4, box: document.getElementById("mboardRetoureEAN4Box") }
+].filter(field => field.input && field.box);
 
-function getMboardRetoureEans() {
-  return mboardRetoureEanInputs
-    .slice(0, activeMboardRetoureEanCount)
-    .map(input => input.value.trim())
-    .filter(Boolean);
+let mboardRetoureActiveEanCount = 1;
+
+function getMboardRetoureActiveEanFields() {
+  return mboardRetoureEanFields.slice(0, mboardRetoureActiveEanCount).map(field => field.input);
 }
 
-function getMboardRetoureFieldOrder() {
+function getMboardRetoureRequiredFields() {
   return [
     inputs.mboardOrder,
-    ...mboardRetoureEanInputs.slice(0, activeMboardRetoureEanCount),
+    ...getMboardRetoureActiveEanFields(),
     inputs.mboardCustomer,
     inputs.mboardState
   ].filter(Boolean);
 }
 
-function updateMboardRetoureAddPosition() {
-  const lastActiveBox = mboardRetoureEanBoxes[Math.max(0, activeMboardRetoureEanCount - 1)];
-  if (lastActiveBox && mboardRetoureAddEAN) {
-    lastActiveBox.insertAdjacentElement("afterend", mboardRetoureAddEAN);
-    mboardRetoureAddEAN.style.display = activeMboardRetoureEanCount >= mboardRetoureEanInputs.length ? "none" : "flex";
-  }
+function updateMboardRetoureAddButtonPosition() {
+  if (!buttons.mboardRetoureAddDouble || !mboardRetoureEanFields.length) return;
+  const lastActiveField = mboardRetoureEanFields[Math.max(0, mboardRetoureActiveEanCount - 1)];
+  lastActiveField?.box?.insertAdjacentElement("afterend", buttons.mboardRetoureAddDouble);
+  buttons.mboardRetoureAddDouble.style.display = mboardRetoureActiveEanCount >= mboardRetoureEanFields.length ? "none" : "flex";
 }
 
 function updateMboardRetoureUI() {
+  mboardRetoureEanFields.forEach((field, idx) => {
+    const isActive = idx < mboardRetoureActiveEanCount;
+    if (idx > 0) field.box.style.display = isActive ? "flex" : "none";
+    if (!isActive) field.input.value = "";
+    field.box.style.borderColor = isActive && field.input.value.trim() ? "green" : "black";
+  });
+
   [inputs.mboardOrder, inputs.mboardCustomer, inputs.mboardState].forEach(el => {
     if (!el) return;
     el.parentElement.style.borderColor = el.value.trim() ? "green" : "black";
   });
 
-  let allVisibleEansFilled = true;
-  mboardRetoureEanInputs.forEach((input, idx) => {
-    const box = mboardRetoureEanBoxes[idx];
-    if (!box) return;
-    const isActive = idx < activeMboardRetoureEanCount;
-    box.style.display = isActive ? "flex" : "none";
-    if (!isActive) {
-      box.style.borderColor = "black";
-      return;
-    }
-    const filled = input.value.trim() !== "";
-    box.style.borderColor = filled ? "green" : "black";
-    if (!filled) allVisibleEansFilled = false;
-  });
+  updateMboardRetoureAddButtonPosition();
 
-  updateMboardRetoureAddPosition();
-
-  const fixedFieldsFilled = [inputs.mboardOrder, inputs.mboardCustomer, inputs.mboardState]
-    .every(el => el && el.value.trim());
-  buttons.mboardRetoureConfirm.style.color = fixedFieldsFilled && allVisibleEansFilled ? "green" : "white";
-}
-
-function removeMboardRetoureEanAt(indexToRemove) {
-  if (indexToRemove <= 0 || indexToRemove >= activeMboardRetoureEanCount) return;
-
-  for (let i = indexToRemove; i < activeMboardRetoureEanCount - 1; i += 1) {
-    mboardRetoureEanInputs[i].value = mboardRetoureEanInputs[i + 1].value;
-  }
-  mboardRetoureEanInputs[activeMboardRetoureEanCount - 1].value = "";
-  activeMboardRetoureEanCount -= 1;
-  updateMboardRetoureUI();
-
-  const focusIndex = Math.min(indexToRemove, activeMboardRetoureEanCount - 1);
-  if (mboardRetoureEanInputs[focusIndex]) mboardRetoureEanInputs[focusIndex].focus();
-}
-
-function setupMboardRetoureRemoveButtons() {
-  mboardRetoureEanBoxes.forEach((box, idx) => {
-    if (!box || idx === 0 || box.querySelector(".ean-remove-btn")) return;
-    box.style.position = "relative";
-
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className = "ean-remove-btn";
-    removeBtn.setAttribute("aria-label", `EAN ${idx + 1} entfernen`);
-    removeBtn.textContent = "×";
-    removeBtn.addEventListener("click", evt => {
-      evt.preventDefault();
-      evt.stopPropagation();
-      removeMboardRetoureEanAt(idx);
-    });
-    box.appendChild(removeBtn);
-  });
+  const filled = getMboardRetoureRequiredFields().every(el => el && el.value.trim());
+  setConfirmButtonReady(buttons.mboardRetoureConfirm, filled);
 }
 
 function addMboardRetoureEanField() {
-  if (activeMboardRetoureEanCount >= mboardRetoureEanInputs.length) return;
-  activeMboardRetoureEanCount += 1;
+  if (mboardRetoureActiveEanCount >= mboardRetoureEanFields.length) return;
+  mboardRetoureActiveEanCount += 1;
+  const addedField = mboardRetoureEanFields[mboardRetoureActiveEanCount - 1];
   updateMboardRetoureUI();
-  const nextInput = mboardRetoureEanInputs[activeMboardRetoureEanCount - 1];
-  if (nextInput) nextInput.focus();
+  focusDelayed(addedField?.input);
 }
 
-function resetMboardRetoureFields() {
-  [inputs.mboardOrder, inputs.mboardCustomer, inputs.mboardState, ...mboardRetoureEanInputs].forEach(inp => {
-    if (inp) inp.value = "";
+function resetMboardRetoureEanFields() {
+  mboardRetoureActiveEanCount = 1;
+  mboardRetoureEanFields.forEach((field, idx) => {
+    field.input.value = "";
+    field.box.style.borderColor = "black";
+    if (idx > 0) field.box.style.display = "none";
   });
-  activeMboardRetoureEanCount = 1;
-  updateMboardRetoureUI();
+  updateMboardRetoureAddButtonPosition();
 }
 
-const retoureFields = [inputs.mboardOrder, ...mboardRetoureEanInputs, inputs.mboardCustomer, inputs.mboardState].filter(Boolean);
+const retoureFields = [
+  inputs.mboardOrder,
+  ...mboardRetoureEanFields.map(field => field.input),
+  inputs.mboardCustomer,
+  inputs.mboardState
+].filter(Boolean);
 
 retoureFields.forEach(inp => {
-  inp.addEventListener("input", () => {
-    if (inp.classList.contains("mboard-retoure-ean-input")) {
-      inp.value = inp.value.replace(/\D/g, "");
-    }
-    updateMboardRetoureUI();
-  });
+  inp.addEventListener("input", updateMboardRetoureUI);
   inp.addEventListener("keydown", e => {
     if (e.key === "Enter") {
       e.preventDefault();
-      const visibleFields = getMboardRetoureFieldOrder();
-      const idx = visibleFields.indexOf(inp);
-      const next = visibleFields[idx + 1];
+      const navFields = getMboardRetoureRequiredFields();
+      const idx = navFields.indexOf(inp);
+      const next = navFields[idx + 1];
       if (next) {
         next.focus();
-      } else if (buttons.mboardRetoureConfirm && buttons.mboardRetoureConfirm.style.color === "green") {
+      } else if (buttons.mboardRetoureConfirm) {
         buttons.mboardRetoureConfirm.click();
       }
     }
   });
 });
 
-if (mboardRetoureAddEAN) {
-  mboardRetoureAddEAN.addEventListener("click", addMboardRetoureEanField);
-  mboardRetoureAddEAN.addEventListener("keydown", e => {
+if (buttons.mboardRetoureAddDouble) {
+  buttons.mboardRetoureAddDouble.setAttribute("role", "button");
+  buttons.mboardRetoureAddDouble.setAttribute("tabindex", "0");
+  buttons.mboardRetoureAddDouble.addEventListener("click", addMboardRetoureEanField);
+  buttons.mboardRetoureAddDouble.addEventListener("keydown", e => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       addMboardRetoureEanField();
@@ -140,21 +102,34 @@ if (mboardRetoureAddEAN) {
   });
 }
 
-setupMboardRetoureRemoveButtons();
-updateMboardRetoureUI();
-
 if (buttons.mboardRetoureConfirm) {
   buttons.mboardRetoureConfirm.addEventListener("click", async e => {
     e.preventDefault();
     const order = inputs.mboardOrder.value.trim();
-    const eans = getMboardRetoureEans();
+    const eans = getMboardRetoureActiveEanFields()
+      .map(input => input.value.trim())
+      .filter(Boolean);
     const customer = inputs.mboardCustomer.value.trim();
     const state = inputs.mboardState.value.trim();
-    if (!(order && eans.length === activeMboardRetoureEanCount && customer && state) || hasSent) return;
+    let firstInvalid = null;
+
+    getMboardRetoureRequiredFields().forEach(field => {
+      if (!field.value.trim()) {
+        markInvalidField(field);
+        firstInvalid = firstInvalid || field;
+      }
+    });
+
+    if (firstInvalid || !order || !eans.length || !customer || !state) {
+      showRequiredFieldsError();
+      focusDelayed(firstInvalid || inputs.mboardOrder);
+      return;
+    }
+    if (hasSent) return;
 
     hasSent = true;
-    const eansText = eans.join(", ");
-    const detailText = `Bestellnummer: ${order} | EAN: ${eansText} | Kundenname: ${customer} | Zustand: ${state}`;
+    const eanText = eans.join(", ");
+    const detailText = `Bestellnummer: ${order} | EANs: ${eanText} | Kundenname: ${customer} | Zustand: ${state}`;
 
     if (typeof recordTicket === "function") {
       recordTicket({
@@ -164,16 +139,18 @@ if (buttons.mboardRetoureConfirm) {
       });
     }
 
-  try {
-    showView("tile");
-    await sendPlannerTicket({
-      kachelname: "M-Board Retoure",
-      text: detailText
-    });
-    resetMboardRetoureFields();
-    showToast("Ticket fuer M-Board Retoure wurde erfolgreich erstellt.");
-    showView("tile");
-  } catch (err) {
+    try {
+      showView("tile");
+      await sendPlannerTicket({
+        kachelname: "M-Board Retoure",
+        text: detailText
+      });
+      retoureFields.forEach(inp => inp.value = "");
+      resetMboardRetoureEanFields();
+      setConfirmButtonReady(buttons.mboardRetoureConfirm, false);
+      showToast("Ticket f\u00fcr M-Board Retoure wurde erfolgreich erstellt.");
+      showView("tile");
+    } catch (err) {
       console.error("Fehler M-Board Retoure:", err);
       alert("Fehler: " + err.message);
       showView("mboardRetoure");
@@ -182,3 +159,6 @@ if (buttons.mboardRetoureConfirm) {
     }
   });
 }
+
+resetMboardRetoureEanFields();
+updateMboardRetoureUI();
