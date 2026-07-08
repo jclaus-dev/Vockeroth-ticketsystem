@@ -60,7 +60,13 @@ arrowNext.addEventListener("click", async e => {
   e.preventDefault();
   const code = inputs.gutschein.value.trim();
   const wert = getEuroNumericValue();
-  if (!code || !wert || hasSent) return;
+  if (!code || !wert) {
+    if (!code) markInvalidField(inputs.gutschein, true);
+    if (!wert) markInvalidField(inputs.gutscheinWert, !code);
+    showRequiredFieldsError();
+    return;
+  }
+  if (hasSent) return;
 
   hasSent = true;
   if (typeof recordTicket === "function") {

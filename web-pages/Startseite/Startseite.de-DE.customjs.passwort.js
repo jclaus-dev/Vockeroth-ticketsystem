@@ -49,6 +49,16 @@ function refreshPassButtons() {
 }
 refreshPassButtons();
 let lastPassButton = null;
+let suppressPasswortEnterUntil = 0;
+let allowPasswortFocusHighlight = false;
+
+function preparePasswortStep1() {
+  passReason = "";
+  lastPassButton = null;
+  suppressPasswortEnterUntil = Date.now() + 320;
+  allowPasswortFocusHighlight = false;
+  refreshPassButtons().forEach(btn => btn.classList.remove("keyboard-selected"));
+}
 
 function setPassKeyboardSelected(target) {
   passButtons.forEach(btn => btn.classList.toggle("keyboard-selected", btn === target));
@@ -57,14 +67,22 @@ function setPassKeyboardSelected(target) {
 
 passButtons.forEach((btn, idx) => {
   btn.tabIndex = 0;
-  btn.addEventListener("focus", () => setPassKeyboardSelected(btn));
+  btn.addEventListener("focus", () => {
+    if (allowPasswortFocusHighlight) {
+      setPassKeyboardSelected(btn);
+      return;
+    }
+    btn.classList.remove("keyboard-selected");
+  });
   btn.addEventListener("blur", () => btn.classList.remove("keyboard-selected"));
   btn.addEventListener("pointerenter", () => {
     if (containers.pass1) containers.pass1.dataset.inputMode = "mouse";
+    allowPasswortFocusHighlight = true;
     setPassKeyboardSelected(btn);
   });
   btn.addEventListener("keydown", e => {
     if (containers.pass1) containers.pass1.dataset.inputMode = "keyboard";
+    allowPasswortFocusHighlight = true;
     const btns = refreshPassButtons();
     const index = idx;
 
@@ -92,8 +110,10 @@ function focusFirstPasswortReason() {
     const btns = refreshPassButtons();
     if (btns.length > 0) {
       if (containers.pass1) containers.pass1.dataset.inputMode = "keyboard";
+      suppressPasswortEnterUntil = Date.now() + 220;
+      allowPasswortFocusHighlight = false;
+      btns.forEach(btn => btn.classList.remove("keyboard-selected"));
       btns[0].focus();
-      setPassKeyboardSelected(btns[0]);
     }
   }, 50);
 }
@@ -114,7 +134,12 @@ window.addEventListener("focus", ensurePasswortFocus);
 document.addEventListener("keydown", e => {
   if (!containers.pass1 || containers.pass1.style.display === "none") return;
   if (!/Arrow(Left|Right|Up|Down)|Enter/.test(e.key)) return;
+  if (e.key === "Enter" && Date.now() < suppressPasswortEnterUntil) {
+    e.preventDefault();
+    return;
+  }
   containers.pass1.dataset.inputMode = "keyboard";
+  allowPasswortFocusHighlight = true;
   const btns = refreshPassButtons();
   const active = document.activeElement;
   if (active && btns.includes(active)) return;
@@ -151,7 +176,7 @@ inputs.newPassword.addEventListener("input", () => {
 });
 
 inputs.newPassword.addEventListener("keydown", e => {
-  if (e.key === "Enter" && inputs.newPassword.value.trim()) {
+  if (e.key === "Enter" && e.ctrlKey && inputs.newPassword.value.trim()) {
     e.preventDefault();
     buttons.passConfirm.click();
   }
@@ -160,9 +185,13 @@ inputs.newPassword.addEventListener("keydown", e => {
 buttons.passConfirm.addEventListener("click", async e => {
   e.preventDefault();
   const np = inputs.newPassword.value.trim();
-  if (!np) return;
+  if (!np) {
+    markInvalidField(inputs.newPassword, true);
+    showRequiredFieldsError();
+    return;
+  }
   if (!passReason) {
-    alert("Bitte zuerst einen Grund auswählen.");
+    showToast("Bitte zuerst einen Grund auswählen.", "error");
     return;
   }
   if (hasSent) return;

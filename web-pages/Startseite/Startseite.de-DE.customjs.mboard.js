@@ -5,7 +5,7 @@ inputs.mboard.addEventListener("input", () => {
 });
 
 inputs.mboard.addEventListener("keydown", e => {
-  if (e.key === "Enter" && inputs.mboard.value.trim()) {
+  if (e.key === "Enter" && e.ctrlKey && inputs.mboard.value.trim()) {
     e.preventDefault();
     e.stopImmediatePropagation();
     buttons.mboardConfirm.click();
@@ -23,7 +23,12 @@ buttons.mboardConfirm.addEventListener("keydown", e => {
 buttons.mboardConfirm.addEventListener("click", async e => {
   e.preventDefault();
   const text = inputs.mboard.value.trim();
-  if (!text || hasSent) return;
+  if (!text) {
+    markInvalidField(inputs.mboard, true);
+    showRequiredFieldsError();
+    return;
+  }
+  if (hasSent) return;
 
   hasSent = true;
   if (typeof recordTicket === "function") {

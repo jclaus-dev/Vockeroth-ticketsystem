@@ -1,7 +1,7 @@
 /* Startseite: Mboard flow */
 
 inputs.mboard.addEventListener("input", () => {
-  buttons.mboardConfirm.style.color = inputs.mboard.value.trim() ? "green" : "white";
+  setConfirmButtonReady(buttons.mboardConfirm, Boolean(inputs.mboard.value.trim()));
 });
 
 inputs.mboard.addEventListener("keydown", e => {
@@ -23,7 +23,12 @@ buttons.mboardConfirm.addEventListener("keydown", e => {
 buttons.mboardConfirm.addEventListener("click", async e => {
   e.preventDefault();
   const text = inputs.mboard.value.trim();
-  if (!text || hasSent) return;
+  if (!text) {
+    markInvalidField(inputs.mboard, true);
+    showRequiredFieldsError();
+    return;
+  }
+  if (hasSent) return;
 
   hasSent = true;
   if (typeof recordTicket === "function") {
@@ -41,7 +46,7 @@ buttons.mboardConfirm.addEventListener("click", async e => {
       text
     });
     inputs.mboard.value = "";
-    buttons.mboardConfirm.style.color = "white";
+    setConfirmButtonReady(buttons.mboardConfirm, false);
     showToast("Ticket für Mboard Probleme wurde erfolgreich erstellt.");
     showView("tile");
   } catch (err) {

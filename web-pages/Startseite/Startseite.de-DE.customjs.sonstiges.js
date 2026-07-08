@@ -5,7 +5,7 @@ inputs.sonstiges.addEventListener("input", () => {
 });
 
 inputs.sonstiges.addEventListener("keydown", e => {
-  if (e.key === "Enter" && inputs.sonstiges.value.trim()) {
+  if (e.key === "Enter" && e.ctrlKey && inputs.sonstiges.value.trim()) {
     e.preventDefault();
     e.stopImmediatePropagation();
     buttons.sonstConfirm.click();

@@ -69,6 +69,7 @@ function recordTicket(entry) {
     personalnummer: inputs.persNr?.value.trim() || "",
     filialnummer: inputs.filNr?.value.trim() || "",
     done: false,
+    inProgress: false,
     typeKey: entry.typeKey || getTypeKeyFromName(entry.kachelname),
     ...entry
   };
@@ -247,7 +248,8 @@ function renderTickets() {
   emptyEl.style.display = "none";
   filtered.forEach((ticket, idx) => {
     const card = document.createElement("div");
-    card.className = `ticket-card${ticket.done ? " done" : ""} is-animated`;
+    const inProgressClass = !ticket.done ? " in-progress" : "";
+    card.className = `ticket-card${ticket.done ? " done" : ""}${inProgressClass} is-animated`;
     card.style.animationDelay = `${Math.min(200 * idx, 800)}ms`;
     card.dataset.id = ticket.id;
     card.dataset.ticketId = (ticket.ticketId || ticket.id || "").trim();
@@ -276,6 +278,9 @@ function renderTickets() {
     meta.className = "ticket-meta";
     meta.textContent = `Datum: ${formatDate(ticket.createdAt)} | Personalnummer ${ticket.personalnummer || "-"} | Filiale: ${ticket.filialnummer || "-"}`;
 
+    const initialBadgeMode = ticket.done ? "done" : "in-progress";
+    const statusBadge = createTicketStatusBadge(initialBadgeMode);
+    if (statusBadge) info.appendChild(statusBadge);
     info.appendChild(title);
     if (detailLines.length) info.appendChild(detailsBlock);
     info.appendChild(meta);
@@ -365,7 +370,7 @@ function exportTicketsToCsv(tickets) {
     const typeKey = ticket.typeKey || getTypeKeyFromName(ticket.kachelname);
     return [
       formatDate(ticket.createdAt),
-      ticket.done ? "Erledigt" : "Nicht erledigt",
+      ticket.done ? "Erledigt" : "In Bearbeitung",
       ticket.isFav ? "Ja" : "Nein",
       getTypeLabelFromKey(typeKey),
       ticket.kachelname || "Ticket",
@@ -392,6 +397,35 @@ function exportTicketsToCsv(tickets) {
 
 if (buttons.homeTab) {
   buttons.homeTab.addEventListener("click", () => showView("tile"));
+}
+
+function createTicketStatusBadge(mode) {
+  if (mode !== "done" && mode !== "in-progress") return null;
+  const badge = document.createElement("div");
+  badge.className = `ticket-status-badge ${mode}`;
+  badge.textContent = mode === "done" ? "ERLEDIGT" : "IN BEARBEITUNG";
+  return badge;
+}
+
+function upsertTicketStatusBadge(ticketEl, mode) {
+  if (!ticketEl) return;
+  const info = ticketEl.querySelector(".ticket-info");
+  if (!info) return;
+
+  const existing = info.querySelector(".ticket-status-badge");
+  if (mode !== "done" && mode !== "in-progress") {
+    if (existing) existing.remove();
+    return;
+  }
+
+  const badge = existing || createTicketStatusBadge(mode);
+  if (!badge) return;
+  badge.className = `ticket-status-badge ${mode}`;
+  badge.textContent = mode === "done" ? "ERLEDIGT" : "IN BEARBEITUNG";
+
+  if (!existing) {
+    info.insertBefore(badge, info.firstChild);
+  }
 }
 if (buttons.handbuchTab) {
   buttons.handbuchTab.addEventListener("click", () => {
@@ -420,6 +454,7 @@ const TICKET_STATUS_SELECTORS = {
 let ticketStatusSyncRunning = false;
 let ticketRefreshProgressTimer = null;
 let ticketTabOpenInFlight = null;
+let ticketStatusPollTimer = null;
 
 function isTicketsViewVisible() {
   if (!containers?.tickets) return false;
@@ -547,6 +582,8 @@ async function fetchTicketStatuses(ticketIds) {
 function markTicketDone(ticketEl) {
   ticketEl.classList.add("is-done");
   ticketEl.classList.add("done");
+  ticketEl.classList.remove("in-progress");
+  upsertTicketStatusBadge(ticketEl, "done");
 
   const checkbox = ticketEl.querySelector(TICKET_STATUS_SELECTORS.checkbox);
   if (checkbox) checkbox.checked = true;
@@ -555,9 +592,24 @@ function markTicketDone(ticketEl) {
   if (existingBadge) existingBadge.remove();
 }
 
+function markTicketInProgress(ticketEl) {
+  ticketEl.classList.remove("is-done");
+  ticketEl.classList.remove("done");
+  ticketEl.classList.add("in-progress");
+  upsertTicketStatusBadge(ticketEl, "in-progress");
+
+  const checkbox = ticketEl.querySelector(TICKET_STATUS_SELECTORS.checkbox);
+  if (checkbox) checkbox.checked = false;
+
+  const existingBadge = ticketEl.querySelector(TICKET_STATUS_SELECTORS.badge);
+  if (existingBadge) existingBadge.remove();
+}
+
 function markTicketUndone(ticketEl) {
   ticketEl.classList.remove("is-done");
   ticketEl.classList.remove("done");
+  ticketEl.classList.add("in-progress");
+  upsertTicketStatusBadge(ticketEl, "in-progress");
 
   const checkbox = ticketEl.querySelector(TICKET_STATUS_SELECTORS.checkbox);
   if (checkbox) checkbox.checked = false;
@@ -609,14 +661,58 @@ function isDoneStatus(statusRaw) {
   ].includes(status);
 }
 
+function isInProgressStatus(statusRaw) {
+  const status = normalizeStatus(statusRaw);
+  if (!status) return false;
+  if (status.includes("bearbeit")) return true;
+  if (status.includes("progress")) return true;
+  if (status.includes("pending")) return true;
+  return [
+    "in bearbeitung",
+    "bearbeitung",
+    "in progress",
+    "processing",
+    "pending",
+    "läuft",
+    "laeuft"
+  ].includes(status);
+}
+
+function extractStatusItemTicketId(item) {
+  const rawId =
+    item?.ticketId ??
+    item?.TicketID ??
+    item?.ticketID ??
+    item?.TicketId ??
+    item?.ticket_id ??
+    item?.id ??
+    item?.ID ??
+    item?.ticket ??
+    item?.Ticket ??
+    "";
+  return String(rawId).trim();
+}
+
+function extractStatusItemState(item) {
+  return (
+    item?.status ??
+    item?.Status ??
+    item?.state ??
+    item?.State ??
+    item?.ticketStatus ??
+    item?.TicketStatus ??
+    ""
+  );
+}
+
 function applyStatusesToDom(tickets, options = {}) {
   const renderOnLocalChange = options.renderOnLocalChange !== false;
   if (!Array.isArray(tickets) || !tickets.length) return;
 
   const statusMap = new Map();
   tickets.forEach(item => {
-    const id = (item?.ticketId || item?.TicketID || item?.ticketID || item?.id || "").trim();
-    const status = normalizeStatus(item?.status ?? item?.Status);
+    const id = extractStatusItemTicketId(item);
+    const status = normalizeStatus(extractStatusItemState(item));
     if (id) statusMap.set(id, status);
   });
   if (!statusMap.size) return;
@@ -631,8 +727,10 @@ function applyStatusesToDom(tickets, options = {}) {
     if (!status) return;
 
     const shouldBeDone = isDoneStatus(status);
-    if (ticket.done !== shouldBeDone) {
+    const shouldBeInProgress = !shouldBeDone && isInProgressStatus(status);
+    if (ticket.done !== shouldBeDone || !!ticket.inProgress !== shouldBeInProgress) {
       ticket.done = shouldBeDone;
+      ticket.inProgress = shouldBeInProgress;
       hasLocalChanges = true;
     }
   });
@@ -656,6 +754,8 @@ function applyStatusesToDom(tickets, options = {}) {
     if (!status) return;
     if (isDoneStatus(status)) {
       markTicketDone(ticketEl);
+    } else if (isInProgressStatus(status)) {
+      markTicketInProgress(ticketEl);
     } else {
       markTicketUndone(ticketEl);
     }
@@ -693,7 +793,22 @@ async function refreshTicketStatuses(options = {}) {
 }
 
 function startTicketStatusPolling() {
-  // Intentionally empty: Statusabfrage nur beim �ffnen der Ticketansicht.
+  if (ticketStatusPollTimer) return;
+  if (isTicketsViewVisible()) {
+    refreshTicketStatuses({
+      force: false,
+      includeStorage: true,
+      renderOnLocalChange: true
+    });
+  }
+  ticketStatusPollTimer = setInterval(() => {
+    if (!isTicketsViewVisible()) return;
+    refreshTicketStatuses({
+      force: false,
+      includeStorage: true,
+      renderOnLocalChange: true
+    });
+  }, 12000);
 }
 
 async function openTicketsViewWithFreshSync() {
@@ -845,6 +960,16 @@ const HANDBUCH_DATA = {
 let currentHandbuchKey = "mboard";
 let currentHandbuchQuery = "";
 let handbuchStartIndex = null;
+let handbuchArticleBackTarget = "handbuchDetail";
+
+function goBackFromHandbuchArticle() {
+  if (handbuchArticleBackTarget === "handbuch") {
+    showView("handbuch");
+    return;
+  }
+  renderHandbuchDetail(currentHandbuchKey);
+  showView("handbuchDetail");
+}
 
 function normalizeHandbuchText(text) {
   return repairHandbuchText(text)
@@ -976,6 +1101,7 @@ function renderHandbuchStartResults(query) {
     `;
     row.addEventListener("click", () => {
       currentHandbuchKey = item.key;
+      handbuchArticleBackTarget = "handbuch";
       renderHandbuchDetail(item.key);
       renderHandbuchArticle(item.section, item.title);
       showView("handbuchArticle");
@@ -1021,6 +1147,7 @@ function renderHandbuchSections(data, query) {
     article.addEventListener("click", () => {
       const sectionTitle = article.dataset.sectionTitle || "";
       const articleTitle = article.dataset.articleTitle || "";
+      handbuchArticleBackTarget = "handbuchDetail";
       renderHandbuchArticle(sectionTitle, articleTitle);
       showView("handbuchArticle");
     });
@@ -1056,6 +1183,7 @@ function initHandbuchLinks() {
   });
 
   const backLink = document.getElementById("handbuchBackLink");
+  const detailBreadcrumb = document.querySelector("#containerHandbuchDetail .handbuch-breadcrumb");
   if (backLink) {
     backLink.addEventListener("click", e => {
       e.preventDefault();
@@ -1063,12 +1191,42 @@ function initHandbuchLinks() {
     });
   }
 
+  const detailBackButton = document.getElementById("handbuchDetailBackBtn");
+  if (detailBackButton) {
+    detailBackButton.textContent = "";
+    detailBackButton.setAttribute("aria-label", "Zurueck");
+    detailBackButton.setAttribute("title", "Zurueck");
+    const detailTopActions = detailBackButton.closest(".handbuch-top-actions");
+    if (detailTopActions) detailTopActions.style.display = "none";
+    if (detailBreadcrumb && !detailBreadcrumb.contains(detailBackButton)) {
+      detailBreadcrumb.insertBefore(detailBackButton, backLink || detailBreadcrumb.firstChild);
+    }
+    detailBackButton.addEventListener("click", () => {
+      showView("handbuch");
+    });
+  }
+
   const backArticle = document.getElementById("handbuchArticleBackLink");
+  const articleBreadcrumb = document.querySelector("#containerHandbuchArticle .handbuch-breadcrumb");
   if (backArticle) {
     backArticle.addEventListener("click", e => {
       e.preventDefault();
-      renderHandbuchDetail(currentHandbuchKey);
-      showView("handbuchDetail");
+      goBackFromHandbuchArticle();
+    });
+  }
+
+  const articleBackButton = document.getElementById("handbuchArticleBackBtn");
+  if (articleBackButton) {
+    articleBackButton.textContent = "";
+    articleBackButton.setAttribute("aria-label", "Zurueck");
+    articleBackButton.setAttribute("title", "Zurueck");
+    const articleTopActions = articleBackButton.closest(".handbuch-top-actions");
+    if (articleTopActions) articleTopActions.style.display = "none";
+    if (articleBreadcrumb && !articleBreadcrumb.contains(articleBackButton)) {
+      articleBreadcrumb.insertBefore(articleBackButton, backArticle || articleBreadcrumb.firstChild);
+    }
+    articleBackButton.addEventListener("click", () => {
+      goBackFromHandbuchArticle();
     });
   }
 
