@@ -1,7 +1,7 @@
 /* Startseite: session handling and user identification */
 const VALID_FILIAL_NUMBERS = [
   "0", "2", "3", "4", "5", "6", "7", "9", "14", "15", "16", "18", "20",
-  "24", "25", "27", "29", "30", "19", "40", "43", "46", "49", "42", "50",
+  "24", "25", "27", "29", "30", "19", "40", "43", "17", "49", "42", "50",
   "51", "52", "53", "54", "55", "57", "58"
 ];
 const VALID_FILIAL_SET = new Set(VALID_FILIAL_NUMBERS);
