@@ -31,7 +31,7 @@ const FILIAL_MAP = {
   "30": "Kassel DEZ s.Oliver",
   "40": "Bad Hersfeld",
   "43": "Bad Hersfeld Sauer Zebra 21",
-  "46": "Homberg Sauer",
+  "17": "Homberg Sauer",
   "49": "Schwalmstadt Sauer Wäsche",
   "50": "Melsungen Intersport",
   "51": "Bad Hersfeld Intersport",
